@@ -121,6 +121,10 @@ theorem measurableSet_stageSet (e : UniformOpenCode) (n s : ℕ) :
 theorem measurableSet_denote (e : UniformOpenCode) (n : ℕ) : MeasurableSet (e.denote n) :=
   MeasurableSet.iUnion fun s ↦ measurableSet_stageSet e n s
 
+theorem stageSet_subset_denote (e : UniformOpenCode) (n s : ℕ) :
+    e.stageSet n s ⊆ e.denote n :=
+  Set.subset_iUnion (e.stageSet n) s
+
 /-! ## Measure -/
 
 /-- Each finite stage has an exact rational measure. -/
@@ -134,6 +138,13 @@ theorem fairCoin_denote (e : UniformOpenCode) (n : ℕ) :
     fairCoin (e.denote n) = ⨆ s, (e.stageWeight n s : ℝ≥0∞) := by
   rw [denote, (monotone_stageSet e n).measure_iUnion]
   exact iSup_congr fun s ↦ fairCoin_stageSet e n s
+
+/-- A semantic measure bound on a c.e. open set is exactly a uniform bound on its exact finite
+stage measures. Used in both directions: semantic bounds give finite-stage bounds, and
+constructions that enforce finite-stage bounds recover the semantic bound. -/
+theorem fairCoin_denote_le_iff (e : UniformOpenCode) (n : ℕ) (q : ℝ≥0∞) :
+    fairCoin (e.denote n) ≤ q ↔ ∀ s, (e.stageWeight n s : ℝ≥0∞) ≤ q := by
+  rw [fairCoin_denote, iSup_le_iff]
 
 /-! ## Acceptance example -/
 
