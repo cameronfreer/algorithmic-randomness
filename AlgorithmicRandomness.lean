@@ -5,3 +5,4 @@ Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Cantor.Basic
 import AlgorithmicRandomness.Cantor.FairCoin
+import AlgorithmicRandomness.Cantor.FiniteOpen
