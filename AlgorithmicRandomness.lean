@@ -7,8 +7,11 @@ import AlgorithmicRandomness.Cantor.Basic
 import AlgorithmicRandomness.Cantor.FairCoin
 import AlgorithmicRandomness.Cantor.FiniteOpen
 import AlgorithmicRandomness.Coding.Partrec
+import AlgorithmicRandomness.Coding.TotalCode
 import AlgorithmicRandomness.EffectiveOpen.Code
 import AlgorithmicRandomness.EffectiveOpen.Reindex
 import AlgorithmicRandomness.EffectiveOpen.Trim
 import AlgorithmicRandomness.Randomness.MartinLof
+import AlgorithmicRandomness.Randomness.ComputablePoint
+import AlgorithmicRandomness.Randomness.Schnorr
 import AlgorithmicRandomness.Randomness.UniversalMartinLof

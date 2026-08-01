@@ -377,12 +377,6 @@ private theorem toBool {α : Type*} [Primcodable α] {p : α → Prop} [Decidabl
     (h : PrimrecPred p) : Primrec fun a ↦ decide (p a) :=
   primrecPred_iff_primrec_decide.mp h
 
-theorem primrec_stringOut : Primrec fun z : (Code × ℕ) × ℕ ↦ stringOut z.1.1 z.1.2 z.2 := by
-  unfold stringOut
-  refine Primrec.option_bind ?_ (Primrec.decode.comp Primrec.snd)
-  exact Code.primrec_evaln.comp (((Primrec.snd.comp Primrec.fst).pair
-    (Primrec.fst.comp Primrec.fst)).pair Primrec.snd)
-
 theorem primrec_emitAll : Primrec fun z : (Code × ℕ) × ℕ ↦ emitAll z.1.1 z.1.2 z.2 := by
   unfold emitAll
   refine Primrec.listFilterMap

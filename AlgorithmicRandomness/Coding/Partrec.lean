@@ -5,6 +5,7 @@ Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Cantor.Basic
 import Mathlib.Computability.PartrecCode
+import Mathlib.Computability.Primrec.List
 
 /-!
 # Coding spike: staged enumeration of bit strings from partial recursive codes
@@ -46,6 +47,20 @@ namespace AlgorithmicRandomness
 the fuel bound and outputs that are not valid `List Bool` codes both give `none`. -/
 def stringOut (c : Code) (s k : ℕ) : Option BitString :=
   (Code.evaln s c k).bind Encodable.decode
+
+/-- `stringOut` is primitive recursive uniformly in the code, the fuel, and the input. -/
+theorem primrec_stringOut : Primrec fun z : (Code × ℕ) × ℕ ↦ stringOut z.1.1 z.1.2 z.2 := by
+  unfold stringOut
+  refine Primrec.option_bind ?_ (Primrec.decode.comp Primrec.snd)
+  exact Code.primrec_evaln.comp (((Primrec.snd.comp Primrec.fst).pair
+    (Primrec.fst.comp Primrec.fst)).pair Primrec.snd)
+
+/-- `Option.isSome` is primitive recursive. -/
+theorem primrec_isSome {α : Type*} [Primcodable α] :
+    Primrec (Option.isSome : Option α → Bool) := by
+  have h : Primrec fun o : Option α ↦ (o.map fun _ ↦ true).getD false :=
+    Primrec.option_getD.comp (Primrec.option_map₁ (Primrec.const true)) (Primrec.const false)
+  exact h.of_eq fun o ↦ by cases o <;> rfl
 
 theorem stringOut_mono {c : Code} {s t k : ℕ} (h : s ≤ t) {σ : BitString}
     (hs : stringOut c s k = some σ) : stringOut c t k = some σ := by
