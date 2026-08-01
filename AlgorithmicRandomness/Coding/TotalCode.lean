@@ -49,6 +49,14 @@ noncomputable def ofPartrecTotal {f : ℕ →. ℕ} (hf : Nat.Partrec f) (htot :
 theorem ofPartrecTotal_toFun {f : ℕ →. ℕ} (hf : Nat.Partrec f) (htot : ∀ n, (f n).Dom) (n : ℕ) :
     (ofPartrecTotal hf htot).toFun n = (f n).get (htot n) := rfl
 
+/-- Bundle a total computable function. -/
+noncomputable def ofComputable {f : ℕ → ℕ} (hf : Computable f) : NatFunctionCode :=
+  ofPartrecTotal (Partrec.nat_iff.mp hf) fun _ ↦ trivial
+
+@[simp]
+theorem ofComputable_toFun {f : ℕ → ℕ} (hf : Computable f) (n : ℕ) :
+    (ofComputable hf).toFun n = f n := rfl
+
 /-- Binary application through the pairing function. -/
 def apply₂ (f : NatFunctionCode) (n k : ℕ) : ℕ := f.toFun (Nat.pair n k)
 

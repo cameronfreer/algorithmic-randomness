@@ -46,20 +46,16 @@ namespace ComputableCantorPoint
 
 variable (p : ComputableCantorPoint)
 
-/-- The initial segment of length `n`. -/
-def prefixOf (n : ℕ) : BitString := List.ofFn fun i : Fin n ↦ p.point i
+/-- The initial segment of length `n`, from the Cantor layer. -/
+abbrev prefixOf (n : ℕ) : BitString := initSeg p.point n
 
-@[simp] theorem prefixOf_zero : p.prefixOf 0 = [] := rfl
+theorem prefixOf_succ (n : ℕ) : p.prefixOf (n + 1) = p.prefixOf n ++ [p.point n] :=
+  initSeg_succ p.point n
 
-theorem prefixOf_succ (n : ℕ) : p.prefixOf (n + 1) = p.prefixOf n ++ [p.point n] := by
-  rw [prefixOf, List.ofFn_succ', List.concat_eq_append]
-  rfl
+theorem length_prefixOf (n : ℕ) : (p.prefixOf n).length = n := length_initSeg p.point n
 
-@[simp] theorem length_prefixOf (n : ℕ) : (p.prefixOf n).length = n := by
-  rw [prefixOf, List.length_ofFn]
-
-theorem mem_cylinder_prefixOf (n : ℕ) : p.point ∈ cylinder (p.prefixOf n) := fun i ↦
-  (List.getElem_ofFn i.isLt).symm
+theorem mem_cylinder_prefixOf (n : ℕ) : p.point ∈ cylinder (p.prefixOf n) :=
+  mem_cylinder_initSeg p.point n
 
 end ComputableCantorPoint
 

@@ -143,6 +143,31 @@ theorem cylinder_eq_union_concat (σ : BitString) :
     · exact Or.inr (key true hb)
   · rintro x (hx | hx) <;> exact cylinder_anti (List.prefix_append σ _) hx
 
+section InitSeg
+
+/-- The initial segment of `x` of length `n`. -/
+def initSeg (x : Cantor) (n : ℕ) : BitString := List.ofFn fun i : Fin n ↦ x i
+
+@[simp] theorem initSeg_zero (x : Cantor) : initSeg x 0 = [] := rfl
+
+@[simp] theorem length_initSeg (x : Cantor) (n : ℕ) : (initSeg x n).length = n := by
+  rw [initSeg, List.length_ofFn]
+
+theorem initSeg_succ (x : Cantor) (n : ℕ) : initSeg x (n + 1) = initSeg x n ++ [x n] := by
+  rw [initSeg, List.ofFn_succ', List.concat_eq_append]
+  rfl
+
+theorem mem_cylinder_initSeg (x : Cantor) (n : ℕ) : x ∈ cylinder (initSeg x n) := fun i ↦
+  (List.getElem_ofFn i.isLt).symm
+
+/-- A point extending `σ` has `σ` as its initial segment of the matching length. -/
+theorem initSeg_of_mem_cylinder {x : Cantor} {σ : BitString} (h : x ∈ cylinder σ) :
+    initSeg x σ.length = σ := by
+  refine List.ext_getElem (by simp) fun i hi₁ hi₂ ↦ ?_
+  exact (List.getElem_ofFn _).trans (h ⟨i, hi₂⟩)
+
+end InitSeg
+
 section Bridge
 
 /-- The restriction of `σ` to `Finset.range σ.length`, in the form expected by mathlib's

@@ -151,6 +151,11 @@ def BitString.weight (σ : BitString) : ℚ≥0 := 2⁻¹ ^ σ.length
 theorem BitString.weight_pos (σ : BitString) : 0 < BitString.weight σ :=
   pow_pos (by norm_num) _
 
+/-- Extending a string by one bit halves its dyadic weight. -/
+theorem BitString.weight_append_singleton (σ : BitString) (b : Bool) :
+    BitString.weight (σ ++ [b]) = 2⁻¹ * BitString.weight σ := by
+  simp [BitString.weight, pow_succ, mul_comm]
+
 /-- The total (un-normalized) weight of a finite cylinder family. -/
 def totalWeight (F : Finset BitString) : ℚ≥0 := ∑ σ ∈ F, BitString.weight σ
 
@@ -212,6 +217,24 @@ theorem finiteOpenWeight_le_one (F : Finset BitString) : finiteOpenWeight F ≤ 
   have hm := prob_le_one (μ := fairCoin) (s := cylinderUnion F)
   rw [fairCoin_cylinderUnion, ← ENNReal.coe_nnratCast] at hm
   exact_mod_cast hm
+
+/-! ## Countable prefix-free families
+
+The measure of a union over an arbitrary prefix-free set of strings, which is what stopping-line
+arguments need. Stated here beside the finite version rather than in any consumer. -/
+
+/-- Generic cast reflection, `ℚ≥0` to `ℝ≥0∞`. -/
+theorem coe_nnrat_le_coe {a b : ℚ≥0} : ((a : ℝ≥0∞) ≤ (b : ℝ≥0∞)) ↔ a ≤ b := by
+  rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ENNReal.coe_le_coe]
+  exact_mod_cast Iff.rfl
+
+/-- The measure of a union of cylinders over a prefix-free set of strings is the sum of their
+weights. -/
+theorem fairCoin_iUnion_cylinder_of_prefixFree {S : Set BitString} (hS : PrefixFree S) :
+    fairCoin (⋃ σ ∈ S, cylinder σ) = ∑' σ : S, (BitString.weight σ.1 : ℝ≥0∞) := by
+  rw [measure_biUnion S.to_countable hS.pairwiseDisjoint_cylinder
+    fun σ _ ↦ measurableSet_cylinder σ]
+  exact tsum_congr fun σ ↦ fairCoin_cylinder_eq_weight σ.1
 
 /-- The finite Kraft inequality: a prefix-free family has total weight at most `1`. -/
 theorem totalWeight_le_one_of_prefixFree {F : Finset BitString}
