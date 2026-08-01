@@ -62,6 +62,16 @@ theorem primrec_isSome {α : Type*} [Primcodable α] :
     Primrec.option_getD.comp (Primrec.option_map₁ (Primrec.const true)) (Primrec.const false)
   exact h.of_eq fun o ↦ by cases o <;> rfl
 
+/-- Natural exponentiation is primitive recursive. -/
+theorem primrec_natPow : Primrec₂ ((· ^ ·) : ℕ → ℕ → ℕ) :=
+  Primrec₂.unpaired'.1 Nat.Primrec.pow
+
+/-- `PrimrecPred` bundles a `Decidable` instance existentially; this extracts the underlying
+`Bool`-valued primitive recursive function, which is what the fold combinators consume. -/
+theorem primrec_decide {α : Type*} [Primcodable α] {p : α → Prop} [DecidablePred p]
+    (h : PrimrecPred p) : Primrec fun a ↦ decide (p a) :=
+  primrecPred_iff_primrec_decide.mp h
+
 theorem stringOut_mono {c : Code} {s t k : ℕ} (h : s ≤ t) {σ : BitString}
     (hs : stringOut c s k = some σ) : stringOut c t k = some σ := by
   rw [stringOut, Option.bind_eq_some_iff] at hs
@@ -86,6 +96,24 @@ theorem stringStage_mono {c : Code} {n : ℕ} {s t : ℕ} (h : s ≤ t) :
   rw [mem_stringStage] at hσ ⊢
   obtain ⟨k, hk, hout⟩ := hσ
   exact ⟨k, hk.trans h, stringOut_mono h hout⟩
+
+/-- The executable list presentation of `stringStage`: the same strings, in ascending input
+order, on a representation a program can consume. -/
+def stringStageList (c : Code) (n s : ℕ) : List BitString :=
+  (List.range (s + 1)).filterMap fun k ↦ stringOut c s (Nat.pair n k)
+
+theorem stringStageList_toFinset (c : Code) (n s : ℕ) :
+    (stringStageList c n s).toFinset = stringStage c n s := rfl
+
+theorem primrec_stringStageList :
+    Primrec fun z : (Code × ℕ) × ℕ ↦ stringStageList z.1.1 z.1.2 z.2 := by
+  unfold stringStageList
+  refine Primrec.listFilterMap
+    (Primrec.list_range.comp (Primrec.succ.comp (Primrec.snd (α := Code × ℕ) (β := ℕ)))) ?_
+  exact primrec_stringOut.comp
+    ((((Primrec.fst.comp Primrec.fst).comp Primrec.fst).pair
+      (Primrec.snd.comp Primrec.fst)).pair
+      (Primrec₂.natPair.comp ((Primrec.snd.comp Primrec.fst).comp Primrec.fst) Primrec.snd))
 
 /-- `c` enumerates `σ` into its `n`-th set: some paired input halts (unboundedly) on an
 output decoding to `σ`. Noncanonical output codes are accepted. -/
