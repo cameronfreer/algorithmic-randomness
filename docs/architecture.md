@@ -66,8 +66,9 @@ every candidate made legal, genuine tests unchanged — is what makes a universa
 Notions that admit a universal test and notions that do not are kept structurally distinct.
 Martin-Löf randomness has a universal test because its measure bound can be enforced by
 trimming; Schnorr randomness has no ordinary universal test of that enumeration-and-trimming
-kind, because computability of the measure is not effectively certifiable in the same way. The library therefore has no generic "randomness notion with a
-universal test" abstraction, since it would be wrong for the second case.
+kind, because computability of the measure is not effectively certifiable in the same way. The
+library therefore has no generic "randomness notion with a universal test" abstraction, since
+it would be wrong for the second case.
 
 Similarly, totality of a program is carried as asserted data alongside the code, never claimed
 to be effectively decidable, and bundles carrying it are deliberately not enumerable.
