@@ -103,4 +103,83 @@ noncomputable def schnorrMartingale (T : SchnorrTest) : RealTreeMartingale where
 @[simp] theorem schnorrMartingale_capital (σ : BitString) :
     (schnorrMartingale T).capital σ = schnorrCapital T σ := rfl
 
+/-! ## The finite approximation
+
+The schedule is frozen: level `n` is read at stage `modulus n (i + |σ| + n + 2)`, and levels
+past `i + |σ| + 2` are dropped. The estimates are kept one-sided in `ℝ≥0∞`, so no subtraction
+appears before the transport to `ℝ`. -/
+
+/-- The stage at which level `n` is read. -/
+def approxStage (T : SchnorrTest) (σ : BitString) (i n : ℕ) : ℕ :=
+  T.modulus.apply₂ n (i + σ.length + n + 2)
+
+/-- The mass of level `n` read at a finite stage. -/
+noncomputable def stageMass (T : SchnorrTest) (n s : ℕ) (σ : BitString) : ℝ≥0∞ :=
+  2 ^ σ.length * fairCoin (T.openCode.stageSet n s ∩ cylinder σ)
+
+/-- The finite approximation to `schnorrMass` at precision `i`. -/
+noncomputable def approxMass (T : SchnorrTest) (σ : BitString) (i : ℕ) : ℝ≥0∞ :=
+  ∑ n ∈ Finset.range (i + σ.length + 2), stageMass T n (approxStage T σ i n) σ
+
+theorem stageMass_le_levelMass (n s : ℕ) (σ : BitString) :
+    stageMass T n s σ ≤ levelMass T n σ := by
+  rw [stageMass, levelMass]
+  gcongr
+  exact UniformOpenCode.stageSet_subset_denote _ _ _
+
+/-- One side of the estimate: the approximation never overshoots. -/
+theorem approxMass_le (σ : BitString) (i : ℕ) : approxMass T σ i ≤ schnorrMass T σ := by
+  refine le_trans (Finset.sum_le_sum fun n _ ↦ stageMass_le_levelMass n _ σ) ?_
+  exact ENNReal.sum_le_tsum _
+
+/-- The scaled per-level stage error, on the frozen schedule. -/
+theorem levelMass_le_stageMass_add (σ : BitString) (i n : ℕ) :
+    levelMass T n σ ≤ stageMass T n (approxStage T σ i n) σ
+      + 2 ^ σ.length * (2⁻¹ : ℝ≥0∞) ^ (i + σ.length + n + 2) := by
+  rw [levelMass, stageMass, approxStage, ← mul_add]
+  gcongr
+  exact stage_error T n (i + σ.length + n + 2) σ
+
+/-- Geometric bookkeeping: `2^ℓ · 2⁻⁽ⁱ⁺ˡ⁺²⁾ · 2 = 2⁻⁽ⁱ⁺¹⁾`, the identity the frozen schedule is
+chosen to make exact. Both the head and the tail estimate reduce to it. -/
+theorem scale_identity (ℓ i : ℕ) :
+    2 ^ ℓ * ((2⁻¹ : ℝ≥0∞) ^ (i + ℓ + 2) * 2) = (2⁻¹ : ℝ≥0∞) ^ (i + 1) := by
+  have hcancel : (2 : ℝ≥0∞) ^ ℓ * (2⁻¹ : ℝ≥0∞) ^ ℓ = 1 := by
+    rw [← mul_pow, ENNReal.mul_inv_cancel (by simp) (by simp), one_pow]
+  have hinv : (2⁻¹ : ℝ≥0∞) * 2 = 1 := ENNReal.inv_mul_cancel (by simp) (by simp)
+  have hsplit : (2⁻¹ : ℝ≥0∞) ^ (i + ℓ + 2)
+      = (2⁻¹ : ℝ≥0∞) ^ (i + 1) * ((2⁻¹ : ℝ≥0∞) ^ ℓ * 2⁻¹) := by
+    rw [show i + ℓ + 2 = (i + 1) + (ℓ + 1) by ring, pow_add, pow_succ (2⁻¹ : ℝ≥0∞) ℓ]
+  rw [hsplit]
+  calc (2 : ℝ≥0∞) ^ ℓ * ((2⁻¹ : ℝ≥0∞) ^ (i + 1) * ((2⁻¹ : ℝ≥0∞) ^ ℓ * 2⁻¹) * 2)
+      = ((2 : ℝ≥0∞) ^ ℓ * (2⁻¹ : ℝ≥0∞) ^ ℓ) * ((2⁻¹ : ℝ≥0∞) * 2)
+        * (2⁻¹ : ℝ≥0∞) ^ (i + 1) := by ring
+    _ = (2⁻¹ : ℝ≥0∞) ^ (i + 1) := by rw [hcancel, hinv, one_mul, one_mul]
+
+/-- The scaled head error sums to at most `2⁻⁽ⁱ⁺¹⁾`. -/
+theorem head_error_le (σ : BitString) (i : ℕ) :
+    ∑ n ∈ Finset.range (i + σ.length + 2),
+      2 ^ σ.length * (2⁻¹ : ℝ≥0∞) ^ (i + σ.length + n + 2) ≤ (2⁻¹ : ℝ≥0∞) ^ (i + 1) := by
+  have hterm : ∀ n : ℕ, 2 ^ σ.length * (2⁻¹ : ℝ≥0∞) ^ (i + σ.length + n + 2)
+      = (2 ^ σ.length * (2⁻¹ : ℝ≥0∞) ^ (i + σ.length + 2)) * (2⁻¹ : ℝ≥0∞) ^ n := by
+    intro n
+    rw [mul_assoc, ← pow_add]
+    congr 2
+    ring
+  refine le_trans (Finset.sum_le_sum fun n _ ↦ le_of_eq (hterm n)) ?_
+  refine le_trans (ENNReal.sum_le_tsum _) ?_
+  rw [ENNReal.tsum_mul_left, ENNReal.tsum_geometric, ENNReal.one_sub_inv_two, inv_inv, mul_assoc]
+  exact le_of_eq (scale_identity σ.length i)
+
+/-- The scaled tail past the cutoff is at most `2⁻⁽ⁱ⁺¹⁾`. -/
+theorem tail_bound (σ : BitString) (i : ℕ) :
+    ∑' n, levelMass T (n + (i + σ.length + 2)) σ ≤ (2⁻¹ : ℝ≥0∞) ^ (i + 1) := by
+  have hterm : ∀ n : ℕ, levelMass T (n + (i + σ.length + 2)) σ
+      = 2 ^ σ.length * fairCoin (T.openCode.denote ((i + σ.length + 2) + n) ∩ cylinder σ) := by
+    intro n; rw [levelMass, Nat.add_comm n (i + σ.length + 2)]
+  rw [tsum_congr hterm, ENNReal.tsum_mul_left]
+  refine le_trans ?_ (le_of_eq (scale_identity σ.length i))
+  gcongr
+  exact tail_error T (i + σ.length + 2) σ
+
 end AlgorithmicRandomness
