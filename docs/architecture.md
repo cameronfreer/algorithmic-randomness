@@ -30,11 +30,11 @@ threshold enumeration does — the uniform statement is the one that is actually
 
 ## Executable and semantic representations are distinct
 
-Any function whose computability must be proved runs on `Nat` and `List`. `Finset`, `ℚ≥0`,
-`ℝ≥0`, and measures appear only in correctness statements.
+Code-producing algorithms use primitive recursive presentations, principally `Nat` and `List`.
+`Finset`, `ℚ≥0`, `ℝ≥0`, and measures appear only in correctness statements.
 
-This is forced by the ambient library rather than chosen: mathlib supplies no
-`Primcodable (Finset α)` and no `Primcodable ℚ≥0`, so an algorithm written over those types
+This is forced by the ambient library rather than chosen: the pinned mathlib revision supplies
+no `Primcodable (Finset α)` and no `Primcodable ℚ≥0`, so an algorithm written over those types
 cannot be proved `Partrec` compositionally and therefore cannot be turned into a code. The
 pattern throughout is a pair — a semantic definition and an executable one — joined by a bridge
 lemma, with all downstream computability going through the executable side and all downstream
@@ -65,8 +65,8 @@ every candidate made legal, genuine tests unchanged — is what makes a universa
 
 Notions that admit a universal test and notions that do not are kept structurally distinct.
 Martin-Löf randomness has a universal test because its measure bound can be enforced by
-trimming; Schnorr randomness does not, because computability of the measure is not effectively
-certifiable in the same way. The library therefore has no generic "randomness notion with a
+trimming; Schnorr randomness has no ordinary universal test of that enumeration-and-trimming
+kind, because computability of the measure is not effectively certifiable in the same way. The library therefore has no generic "randomness notion with a
 universal test" abstraction, since it would be wrong for the second case.
 
 Similarly, totality of a program is carried as asserted data alongside the code, never claimed
@@ -74,7 +74,10 @@ to be effectively decidable, and bundles carrying it are deliberately not enumer
 
 ## Verification discipline
 
-Every module in the stable spine is free of `sorry`, and CI enforces both that and the
-boundary against the experimental library. Headline results are checked to depend only on the
-standard axioms `propext`, `Classical.choice`, and `Quot.sound`. Executable definitions carry
-compile-time evaluation checks, so the executable layer is exercised and not merely typechecked.
+These are enforced policies rather than periodic observations. CI builds both library targets
+under mathlib's linter set with warnings as errors, rejects proof placeholders in the public
+import spine, enforces the experimental dependency boundary, and audits the axiom policy by
+sweeping every declaration in the `AlgorithmicRandomness` namespace — a sweep rather than a
+curated list, so a new declaration cannot introduce an axiom by being forgotten. Key executable
+definitions carry compile-time evaluation checks, so the executable layer is exercised and not
+merely typechecked.

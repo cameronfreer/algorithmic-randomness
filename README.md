@@ -11,8 +11,9 @@ correctness theorems connecting them to their set- and measure-theoretic denotat
 
 ## Status
 
-A developing research library, under active construction. The stable spine is complete and
-verified as far as it goes; it is not yet feature-frozen, and names may change.
+The project is under active development and does not yet promise API stability.
+`AlgorithmicRandomness` is the public dependency spine; work in progress is isolated in
+`AlgorithmicRandomnessExperimental`.
 
 Established implications among randomness notions:
 
@@ -34,7 +35,7 @@ CI enforces all of the following on every push:
   axioms `propext`, `Classical.choice`, and `Quot.sound`, checked by an environment sweep
   rather than a curated list.
 
-Executable definitions additionally carry compile-time evaluation checks, so the executable
+Key executable definitions additionally carry compile-time evaluation checks, so the executable
 layer is exercised rather than merely typechecked.
 
 ## Highlights
@@ -95,12 +96,6 @@ lake build
 
 The Lean toolchain and the complete dependency graph are pinned in `lean-toolchain` and
 `lake-manifest.json`.
-
-## Development
-
-The main `AlgorithmicRandomness` library is the stable dependency spine. Work in progress is
-isolated in `AlgorithmicRandomnessExperimental`, which may not be imported by the main library.
-CI builds both targets and enforces the dependency boundary.
 
 ## License
 
