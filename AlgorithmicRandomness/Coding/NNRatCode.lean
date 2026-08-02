@@ -7,7 +7,9 @@ import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Order.Field.Basic
 import Mathlib.Computability.Primrec.List
 import Mathlib.Data.NNRat.Lemmas
+import Mathlib.Tactic.FieldSimp
 import Mathlib.Tactic.Positivity
+import Mathlib.Tactic.Ring
 
 /-!
 # Coded nonnegative rationals
@@ -44,6 +46,65 @@ theorem value_surjective (q : ℚ≥0) : ∃ m, value m = q := by
   refine ⟨Nat.pair q.num (q.den - 1), ?_⟩
   rw [value_pair, Nat.sub_add_cancel q.den_pos]
   exact q.num_div_den
+
+/-! ## Arithmetic on codes -/
+
+/-- Addition of coded rationals, by cross-multiplication onto a common denominator. -/
+def add (m n : ℕ) : ℕ :=
+  Nat.pair (m.unpair.1 * (n.unpair.2 + 1) + n.unpair.1 * (m.unpair.2 + 1))
+    ((m.unpair.2 + 1) * (n.unpair.2 + 1) - 1)
+
+theorem value_add (m n : ℕ) : value (add m n) = value m + value n := by
+  have hpos : 0 < (m.unpair.2 + 1) * (n.unpair.2 + 1) := Nat.mul_pos m.unpair.2.succ_pos
+    n.unpair.2.succ_pos
+  rw [add, value_pair, Nat.sub_add_cancel hpos, value, value]
+  have h1 : ((m.unpair.2 + 1 : ℕ) : ℚ≥0) ≠ 0 := by positivity
+  have h2 : ((n.unpair.2 + 1 : ℕ) : ℚ≥0) ≠ 0 := by positivity
+  push_cast
+  field_simp
+
+/-- Doubling a coded rational. -/
+def double (m : ℕ) : ℕ := Nat.pair (2 * m.unpair.1) m.unpair.2
+
+theorem value_double (m : ℕ) : value (double m) = 2 * value m := by
+  rw [double, value_pair, value]
+  push_cast
+  ring
+
+/-- Halving a coded rational. -/
+def half (m : ℕ) : ℕ := Nat.pair m.unpair.1 (2 * (m.unpair.2 + 1) - 1)
+
+theorem value_half (m : ℕ) : value (half m) = value m / 2 := by
+  have hpos : 0 < 2 * (m.unpair.2 + 1) := Nat.mul_pos two_pos m.unpair.2.succ_pos
+  rw [half, value_pair, Nat.sub_add_cancel hpos, value]
+  have h1 : ((m.unpair.2 + 1 : ℕ) : ℚ≥0) ≠ 0 := by positivity
+  push_cast
+  field_simp
+
+theorem primrec_add : Primrec₂ add :=
+  Primrec₂.natPair.comp
+    (Primrec.nat_add.comp
+      (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+      (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))))
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+      (Primrec.const 1))
+
+theorem primrec_double : Primrec double :=
+  Primrec₂.natPair.comp
+    (Primrec.nat_mul.comp (Primrec.const 2) (Primrec.fst.comp Primrec.unpair))
+    (Primrec.snd.comp Primrec.unpair)
+
+theorem primrec_half : Primrec half :=
+  Primrec₂.natPair.comp (Primrec.fst.comp Primrec.unpair)
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp (Primrec.const 2)
+        (Primrec.succ.comp (Primrec.snd.comp Primrec.unpair)))
+      (Primrec.const 1))
 
 /-- Comparison of coded rationals, decided in `ℕ` by cross-multiplication. -/
 def le (m k : ℕ) : Bool :=
