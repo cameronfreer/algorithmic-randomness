@@ -22,3 +22,4 @@ import AlgorithmicRandomness.Martingale.Computable
 import AlgorithmicRandomness.Randomness.MLRImpliesComputable
 import AlgorithmicRandomness.Randomness.SchnorrApprox
 import AlgorithmicRandomness.Coding.RatCode
+import AlgorithmicRandomness.Martingale.Simulate
