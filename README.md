@@ -9,6 +9,34 @@ The library develops computability and measure theory together: effective object
 represented by **actual program codes**, equipped with executable finite approximations and
 correctness theorems connecting them to their set- and measure-theoretic denotations.
 
+## Status
+
+A developing research library, under active construction. The stable spine is complete and
+verified as far as it goes; it is not yet feature-frozen, and names may change.
+
+Established implications among randomness notions:
+
+| From | To | Route |
+| --- | --- | --- |
+| Martin-Löf random | computably random | Ville's inequality on a coded threshold test |
+| Martin-Löf random | Schnorr random | structural |
+
+Both arrows originate at Martin-Löf randomness and are independent; the implication from
+computable randomness to Schnorr randomness is not yet formalized.
+
+## Verification
+
+CI enforces all of the following on every push:
+
+- both library targets build under mathlib's linter set with warnings as errors;
+- the stable spine contains no `sorry`, and never imports the experimental library;
+- every declaration in the `AlgorithmicRandomness` namespace depends only on the standard
+  axioms `propext`, `Classical.choice`, and `Quot.sound`, checked by an environment sweep
+  rather than a curated list.
+
+Executable definitions additionally carry compile-time evaluation checks, so the executable
+layer is exercised rather than merely typechecked.
+
 ## Highlights
 
 - Cantor-space cylinders and fair-coin measure, with exact dyadic calculations for finite

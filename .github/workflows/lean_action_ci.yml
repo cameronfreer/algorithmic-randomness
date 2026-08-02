@@ -24,3 +24,9 @@ jobs:
       # the staging library. Pure source analysis, so it does not depend on build artefacts.
       - name: Verify the sorry boundary
         run: python3 scripts/check_sorry_boundary.py
+
+      # Axiom hygiene: an environment sweep over every declaration owned by the
+      # `AlgorithmicRandomness` namespace, so a new declaration cannot introduce an axiom by
+      # being left off a hand-curated list.
+      - name: Verify axiom hygiene
+        run: lake env lean scripts/AxiomAudit.lean
