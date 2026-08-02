@@ -64,6 +64,16 @@ theorem eval_program_pair (f : NatFunctionCode) (n k : ℕ) :
     f.program.eval (Nat.pair n k) = Part.some (f.apply₂ n k) :=
   f.eval_program _
 
+/-- A bundled total program computes its bundled function; consumers should not have to
+reconstruct this. -/
+theorem computable_toFun (f : NatFunctionCode) : Computable f.toFun := by
+  have h : Partrec fun n : ℕ ↦ f.program.eval n :=
+    Code.eval_part.comp (Computable.const f.program) Computable.id
+  exact h.of_eq fun n ↦ f.eval_program n
+
+theorem computable_apply₂ (f : NatFunctionCode) : Computable₂ f.apply₂ :=
+  (f.computable_toFun.comp Primrec₂.natPair.to_comp).of_eq fun _ ↦ rfl
+
 end NatFunctionCode
 
 end AlgorithmicRandomness

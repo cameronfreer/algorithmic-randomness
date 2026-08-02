@@ -17,10 +17,10 @@ Stating the rate against `stageSet` — the canonical approximation from the eff
 — is what makes this a claim about computable convergence rather than an arbitrary set
 difference, and it avoids `ENNReal` subtraction entirely.
 
-There is deliberately **no universal Schnorr test** here, and no generic "randomness notion"
-abstraction: the computability-of-measure condition is not effectively certifiable the way the
-Martin-Löf measure bound can be enforced by trimming, so any abstraction assuming a universal
-test would be wrong for this notion.
+There is deliberately **no universal Schnorr test of the Martin-Löf enumeration-and-trimming
+kind** here, and no generic "randomness notion" abstraction: the computability-of-measure
+condition is not effectively certifiable the way the Martin-Löf measure bound can be enforced by
+trimming, so any abstraction assuming such a universal test would be wrong for this notion.
 
 Since `SchnorrTest` extends `MartinLofTest`, the capture API is inherited: for `T : SchnorrTest`
 the projections `T.openCode`, `T.Captures`, and `T.captureSet` resolve through

@@ -29,11 +29,12 @@ computable randomness to Schnorr randomness is not yet formalized.
 
 CI enforces all of the following on every push:
 
-- both library targets build under mathlib's linter set with warnings as errors;
-- the stable spine contains no `sorry`, and never imports the experimental library;
-- every declaration in the `AlgorithmicRandomness` namespace depends only on the standard
-  axioms `propext`, `Classical.choice`, and `Quot.sound`, checked by an environment sweep
-  rather than a curated list.
+- the public spine builds with warnings as errors, and the experimental library must typecheck
+  under the same linter set;
+- the public spine contains no `sorry`, and never imports the experimental library;
+- every declaration in the public import spine depends only on the standard axioms `propext`,
+  `Classical.choice`, and `Quot.sound`, checked by an environment sweep rather than a curated
+  list.
 
 Key executable definitions additionally carry compile-time evaluation checks, so the executable
 layer is exercised rather than merely typechecked.
