@@ -106,6 +106,21 @@ theorem primrec_half : Primrec half :=
         (Primrec.succ.comp (Primrec.snd.comp Primrec.unpair)))
       (Primrec.const 1))
 
+/-- Scaling a coded rational by a power of two, which is what a cylinder factor `2^|σ|` is. -/
+def scalePowTwo (k m : ℕ) : ℕ := Nat.pair (2 ^ k * m.unpair.1) m.unpair.2
+
+theorem value_scalePowTwo (k m : ℕ) : value (scalePowTwo k m) = 2 ^ k * value m := by
+  rw [scalePowTwo, value_pair, value]
+  push_cast
+  ring
+
+theorem primrec_scalePowTwo : Primrec₂ scalePowTwo :=
+  Primrec₂.natPair.comp
+    (Primrec.nat_mul.comp
+      ((Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) Primrec.fst)
+      (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd)))
+    (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))
+
 /-- Comparison of coded rationals, decided in `ℕ` by cross-multiplication. -/
 def le (m k : ℕ) : Bool :=
   decide (m.unpair.1 * (k.unpair.2 + 1) ≤ k.unpair.1 * (m.unpair.2 + 1))

@@ -221,4 +221,70 @@ theorem schnorrMass_le_approxMass_add (σ : BitString) (i : ℕ) :
             mul_assoc, ENNReal.mul_inv_cancel (by simp) (by simp), mul_one]
         rw [add_assoc, hhalf]
 
+/-! ## The coded approximation
+
+The exact bridge theorem `coe_value_approxCode` below is the only place the computation meets
+the measure theory; once it is available the two `ℝ≥0∞` estimates transport without ever
+unfolding the computation again. -/
+
+open Nat.Partrec (Code)
+
+/-- Distributing the `ℚ≥0 → ℝ≥0∞` cast over a power-of-two scaling. -/
+private theorem coe_nnrat_mul_pow (q : ℚ≥0) (k : ℕ) :
+    ((q * 2 ^ k : ℚ≥0) : ℝ≥0∞) = (q : ℝ≥0∞) * 2 ^ k := by
+  rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast]
+  push_cast
+  rfl
+
+/-- Distributing the `ℚ≥0 → ℝ≥0∞` cast over addition. -/
+private theorem coe_nnrat_add (a b : ℚ≥0) : ((a + b : ℚ≥0) : ℝ≥0∞) = (a : ℝ≥0∞) + b := by
+  rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast]
+  push_cast
+  rfl
+
+private theorem coe_nnrat_zero : ((0 : ℚ≥0) : ℝ≥0∞) = 0 := by
+  rw [← ENNReal.coe_nnratCast]
+  push_cast
+  rfl
+
+/-- The coded contribution of level `n`: the exact rational measure of the scheduled stage,
+conditioned on `σ` and scaled by the cylinder factor. -/
+def levelCode (T : SchnorrTest) (σ : BitString) (i n : ℕ) : ℕ :=
+  NNRatCode.scalePowTwo σ.length
+    (FiniteOpenCode.capWeightCode
+      (stringStageList T.openCode.program n (approxStage T σ i n)) σ)
+
+theorem coe_value_levelCode (σ : BitString) (i n : ℕ) :
+    ((NNRatCode.value (levelCode T σ i n) : ℚ≥0) : ℝ≥0∞)
+      = stageMass T n (approxStage T σ i n) σ := by
+  rw [levelCode, NNRatCode.value_scalePowTwo, stageMass, UniformOpenCode.stageSet,
+    UniformOpenCode.stage, ← stringStageList_toFinset,
+    FiniteOpenCode.fairCoin_cylinderUnion_inter_cylinder,
+    FiniteOpenCode.value_capWeightCode, mul_comm ((2 : ℚ≥0) ^ σ.length) _,
+    coe_nnrat_mul_pow, mul_comm]
+
+/-- The coded partial sum of the first `N` levels. -/
+def approxCodeUpTo (T : SchnorrTest) (σ : BitString) (i : ℕ) : ℕ → ℕ
+  | 0 => Nat.pair 0 0
+  | N + 1 => NNRatCode.add (approxCodeUpTo T σ i N) (levelCode T σ i N)
+
+theorem coe_value_approxCodeUpTo (σ : BitString) (i N : ℕ) :
+    ((NNRatCode.value (approxCodeUpTo T σ i N) : ℚ≥0) : ℝ≥0∞)
+      = ∑ n ∈ Finset.range N, stageMass T n (approxStage T σ i n) σ := by
+  induction N with
+  | zero => rw [approxCodeUpTo, NNRatCode.value_pair_zero, Nat.cast_zero,
+      coe_nnrat_zero, Finset.range_zero, Finset.sum_empty]
+  | succ N ih =>
+    rw [approxCodeUpTo, NNRatCode.value_add, coe_nnrat_add, Finset.sum_range_succ, ih,
+      coe_value_levelCode σ i N]
+
+/-- The coded approximation to `schnorrMass` at precision `i`. -/
+def approxCode (T : SchnorrTest) (σ : BitString) (i : ℕ) : ℕ :=
+  approxCodeUpTo T σ i (i + σ.length + 2)
+
+/-- **The exact bridge**: the coded computation denotes exactly the semantic approximation. -/
+theorem coe_value_approxCode (σ : BitString) (i : ℕ) :
+    ((NNRatCode.value (approxCode T σ i) : ℚ≥0) : ℝ≥0∞) = approxMass T σ i :=
+  coe_value_approxCodeUpTo σ i _
+
 end AlgorithmicRandomness
