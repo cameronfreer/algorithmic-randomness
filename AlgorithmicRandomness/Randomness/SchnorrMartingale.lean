@@ -287,4 +287,135 @@ theorem coe_value_approxCode (σ : BitString) (i : ℕ) :
     ((NNRatCode.value (approxCode T σ i) : ℚ≥0) : ℝ≥0∞) = approxMass T σ i :=
   coe_value_approxCodeUpTo σ i _
 
+/-! ## Transport to `ℝ≥0` and the approximation guarantee -/
+
+/-- The approximation as a nonnegative real. -/
+noncomputable def approxValue (T : SchnorrTest) (σ : BitString) (i : ℕ) : ℝ≥0 :=
+  ((NNRatCode.value (approxCode T σ i) : ℚ≥0) : ℝ≥0)
+
+theorem coe_approxValue (σ : BitString) (i : ℕ) :
+    ((approxValue T σ i : ℝ≥0) : ℝ≥0∞) = approxMass T σ i := by
+  rw [approxValue, ENNReal.coe_nnratCast]
+  exact coe_value_approxCode σ i
+
+theorem approxValue_le (σ : BitString) (i : ℕ) : approxValue T σ i ≤ schnorrCapital T σ := by
+  rw [← ENNReal.coe_le_coe, coe_approxValue, coe_schnorrCapital]
+  exact approxMass_le σ i
+
+theorem schnorrCapital_le_approxValue_add (σ : BitString) (i : ℕ) :
+    schnorrCapital T σ ≤ approxValue T σ i + (2⁻¹ : ℝ≥0) ^ i := by
+  rw [← ENNReal.coe_le_coe, coe_schnorrCapital]
+  push_cast [coe_approxValue]
+  exact schnorrMass_le_approxMass_add σ i
+
+/-- The approximation guarantee, in the real absolute-value form the structure requires. The
+one-sided bounds do all the work; the absolute value is resolved only here. -/
+theorem abs_approxValue_sub (σ : BitString) (i : ℕ) :
+    |((approxValue T σ i : ℝ≥0) : ℝ) - ((schnorrCapital T σ : ℝ≥0) : ℝ)| ≤ (2 : ℝ)⁻¹ ^ i := by
+  have hle : ((approxValue T σ i : ℝ≥0) : ℝ) ≤ ((schnorrCapital T σ : ℝ≥0) : ℝ) := by
+    exact_mod_cast approxValue_le σ i
+  have hup : ((schnorrCapital T σ : ℝ≥0) : ℝ)
+      ≤ ((approxValue T σ i : ℝ≥0) : ℝ) + (2 : ℝ)⁻¹ ^ i := by
+    have h := schnorrCapital_le_approxValue_add (T := T) σ i
+    have : ((schnorrCapital T σ : ℝ≥0) : ℝ)
+        ≤ (((approxValue T σ i + (2⁻¹ : ℝ≥0) ^ i : ℝ≥0)) : ℝ) := by exact_mod_cast h
+    simpa using this
+  rw [abs_sub_comm, abs_of_nonneg (by linarith)]
+  linarith
+
+/-! ## The approximation as a program
+
+One total raw function on paired naturals, with invalid encodings folded to `[]`, proved
+`Computable` by recursion on the cutoff and packaged once. -/
+
+-- Same proof-engineering boundary as elsewhere: the coded arithmetic unfolds into `Nat.unpair`
+-- and hence `Nat.sqrt`, which makes elaboration explode during composition.
+attribute [local irreducible] NNRatCode.add NNRatCode.scalePowTwo FiniteOpenCode.capWeightCode
+
+/-- The raw approximation function: on `⟨encode σ, i⟩`, the coded approximation at precision
+`i`. Naturals that decode to nothing fold to the empty string, which keeps the function total
+without affecting the canonical case. -/
+def schnorrApproxFun (T : SchnorrTest) (input : ℕ) : ℕ :=
+  approxCode T ((Encodable.decode input.unpair.1 : Option BitString).getD []) input.unpair.2
+
+theorem schnorrApproxFun_encode (σ : BitString) (i : ℕ) :
+    schnorrApproxFun T (Nat.pair (Encodable.encode σ) i) = approxCode T σ i := by
+  rw [schnorrApproxFun, Nat.unpair_pair, Encodable.encodek, Option.getD_some]
+
+theorem computable_schnorrApproxFun (T : SchnorrTest) : Computable (schnorrApproxFun T) := by
+  -- the decoded string and the precision, as computable functions of the input
+  have hstr : Computable fun input : ℕ ↦
+      (Encodable.decode input.unpair.1 : Option BitString).getD [] :=
+    (Primrec.option_getD.comp (Primrec.decode.comp (Primrec.fst.comp Primrec.unpair))
+      (Primrec.const [])).to_comp
+  have hi : Computable fun input : ℕ ↦ input.unpair.2 :=
+    (Primrec.snd.comp Primrec.unpair).to_comp
+  -- the cutoff
+  have hcut : Computable fun input : ℕ ↦ input.unpair.2
+      + ((Encodable.decode input.unpair.1 : Option BitString).getD []).length + 2 :=
+    (Primrec.nat_add.comp
+      (Primrec.nat_add.comp (Primrec.snd.comp Primrec.unpair)
+        (Primrec.list_length.comp (Primrec.option_getD.comp
+          (Primrec.decode.comp (Primrec.fst.comp Primrec.unpair)) (Primrec.const []))))
+      (Primrec.const 2)).to_comp
+  -- the scheduled stage, using that a bundled total code computes its bundled function
+  have hstage : Computable₂ fun (input : ℕ) (n : ℕ) ↦
+      approxStage T ((Encodable.decode input.unpair.1 : Option BitString).getD [])
+        input.unpair.2 n := by
+    have : Computable fun q : ℕ × ℕ ↦ T.modulus.apply₂ q.2
+        (q.1.unpair.2 + ((Encodable.decode q.1.unpair.1 : Option BitString).getD []).length
+          + q.2 + 2) :=
+      T.modulus.computable_apply₂.comp Computable.snd
+        ((Primrec.nat_add.comp
+          (Primrec.nat_add.comp
+            (Primrec.nat_add.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst))
+              (Primrec.list_length.comp (Primrec.option_getD.comp
+                (Primrec.decode.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)))
+                (Primrec.const []))))
+            Primrec.snd)
+          (Primrec.const 2)).to_comp)
+    exact this
+  -- the coded level term
+  have hlevel : Computable₂ fun (input : ℕ) (n : ℕ) ↦
+      levelCode T ((Encodable.decode input.unpair.1 : Option BitString).getD [])
+        input.unpair.2 n := by
+    refine (NNRatCode.primrec_scalePowTwo.to_comp.comp
+      ((Primrec.list_length.comp (Primrec.option_getD.comp
+        (Primrec.decode.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)))
+        (Primrec.const []))).to_comp) ?_)
+    refine FiniteOpenCode.primrec_capWeightCode.to_comp.comp ?_ ?_
+    · exact (primrec_stringStageList.to_comp).comp
+        (Computable.pair (Computable.pair (Computable.const T.openCode.program) Computable.snd)
+          hstage)
+    · exact (Primrec.option_getD.comp
+        (Primrec.decode.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)))
+        (Primrec.const [])).to_comp
+  -- fold the levels
+  have hstep : Computable₂ fun (input : ℕ) (p : ℕ × ℕ) ↦
+      NNRatCode.add p.2 (levelCode T
+        ((Encodable.decode input.unpair.1 : Option BitString).getD []) input.unpair.2 p.1) :=
+    NNRatCode.primrec_add.to_comp.comp (Computable.snd.comp Computable.snd)
+      (hlevel.comp Computable.fst (Computable.fst.comp Computable.snd))
+  have hrec := Computable.nat_rec hcut (Computable.const (Nat.pair 0 0)) hstep
+  refine hrec.of_eq fun input ↦ ?_
+  rw [schnorrApproxFun, approxCode]
+  generalize (Encodable.decode input.unpair.1 : Option BitString).getD [] = σ
+  generalize input.unpair.2 = i
+  induction (i + σ.length + 2) with
+  | zero => rfl
+  | succ N ih => rw [approxCodeUpTo, ← ih]
+
+/-- **Internal Gate 2b**: the conditional-probability martingale of a Schnorr test, together
+with a program computing rational approximations to it at a computable rate. -/
+noncomputable def schnorrApproximable (T : SchnorrTest) : ApproximableTreeMartingale where
+  toRealTreeMartingale := schnorrMartingale T
+  approxCode := NatFunctionCode.ofComputable (computable_schnorrApproxFun T)
+  approx_spec σ i := by
+    rw [NatFunctionCode.apply₂, NatFunctionCode.ofComputable_toFun, schnorrApproxFun_encode]
+    have h := abs_approxValue_sub (T := T) σ i
+    rwa [approxValue] at h
+
+@[simp] theorem schnorrApproximable_capital (σ : BitString) :
+    (schnorrApproximable T).capital σ = schnorrCapital T σ := rfl
+
 end AlgorithmicRandomness
