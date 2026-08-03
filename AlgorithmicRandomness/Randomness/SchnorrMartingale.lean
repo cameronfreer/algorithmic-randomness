@@ -182,4 +182,43 @@ theorem tail_bound (σ : BitString) (i : ℕ) :
   gcongr
   exact tail_error T (i + σ.length + 2) σ
 
+/-- The complement tail is bounded by the shifted tail, via the surjection `m ↦ m + N`.
+Kept private: the shift comparison has no other consumer. -/
+private theorem tsum_compl_le_shift (σ : BitString) (N : ℕ) :
+    ∑' n : ↥((Finset.range N : Finset ℕ) : Set ℕ)ᶜ, levelMass T (n : ℕ) σ
+      ≤ ∑' m : ℕ, levelMass T (m + N) σ := by
+  have hsurj : Function.Surjective
+      (fun m : ℕ ↦ (⟨m + N, by simp⟩ : ↥((Finset.range N : Finset ℕ) : Set ℕ)ᶜ)) := by
+    rintro ⟨n, hn⟩
+    have hle : N ≤ n := by
+      simp only [Finset.coe_range, Set.mem_compl_iff, Set.mem_Iio, not_lt] at hn
+      exact hn
+    exact ⟨n - N, by simp [Nat.sub_add_cancel hle]⟩
+  exact ENNReal.tsum_le_tsum_comp_of_surjective hsurj fun n ↦ levelMass T (n : ℕ) σ
+
+/-- The other side of the estimate: the approximation is short by at most `2⁻ⁱ`. -/
+theorem schnorrMass_le_approxMass_add (σ : BitString) (i : ℕ) :
+    schnorrMass T σ ≤ approxMass T σ i + (2⁻¹ : ℝ≥0∞) ^ i := by
+  have hhead : ∑ n ∈ Finset.range (i + σ.length + 2), levelMass T n σ
+      ≤ approxMass T σ i + (2⁻¹ : ℝ≥0∞) ^ (i + 1) := by
+    refine le_trans (Finset.sum_le_sum fun n _ ↦ levelMass_le_stageMass_add σ i n) ?_
+    rw [Finset.sum_add_distrib, approxMass]
+    gcongr
+    exact head_error_le σ i
+  have htail : ∑' n : ↥((Finset.range (i + σ.length + 2) : Finset ℕ) : Set ℕ)ᶜ,
+      levelMass T (n : ℕ) σ ≤ (2⁻¹ : ℝ≥0∞) ^ (i + 1) :=
+    le_trans (tsum_compl_le_shift σ (i + σ.length + 2)) (tail_bound σ i)
+  calc schnorrMass T σ
+      = ∑ n ∈ Finset.range (i + σ.length + 2), levelMass T n σ
+        + ∑' n : ↥((Finset.range (i + σ.length + 2) : Finset ℕ) : Set ℕ)ᶜ,
+            levelMass T (n : ℕ) σ :=
+        (ENNReal.sum_add_tsum_compl _ _).symm
+    _ ≤ (approxMass T σ i + (2⁻¹ : ℝ≥0∞) ^ (i + 1)) + (2⁻¹ : ℝ≥0∞) ^ (i + 1) :=
+        add_le_add hhead htail
+    _ = approxMass T σ i + (2⁻¹ : ℝ≥0∞) ^ i := by
+        have hhalf : (2⁻¹ : ℝ≥0∞) ^ (i + 1) + (2⁻¹ : ℝ≥0∞) ^ (i + 1) = (2⁻¹ : ℝ≥0∞) ^ i := by
+          rw [← two_mul, pow_succ, ← mul_assoc, mul_comm (2 : ℝ≥0∞) ((2⁻¹ : ℝ≥0∞) ^ i),
+            mul_assoc, ENNReal.mul_inv_cancel (by simp) (by simp), mul_one]
+        rw [add_assoc, hhalf]
+
 end AlgorithmicRandomness
