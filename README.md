@@ -20,10 +20,8 @@ Established implications among randomness notions:
 | From | To | Route |
 | --- | --- | --- |
 | Martin-Löf random | computably random | Ville's inequality on a coded threshold test |
-| Martin-Löf random | Schnorr random | structural |
-
-Both arrows originate at Martin-Löf randomness and are independent; the implication from
-computable randomness to Schnorr randomness is not yet formalized.
+| computably random | Schnorr random | simulation of the conditional-probability martingale |
+| Martin-Löf random | Schnorr random | structural, and also by composition |
 
 ## Verification
 
@@ -46,8 +44,9 @@ layer is exercised rather than merely typechecked.
 - Coded uniformly c.e. open sets with canonical increasing finite-stage approximations.
 - Martin-Löf and Schnorr tests, including a coded universal Martin-Löf test.
 - Conullity of Martin-Löf randomness, and non-randomness of computable points.
-- Rational tree martingales, Ville's inequality, computable randomness, and the implication
-  from Martin-Löf randomness to computable randomness.
+- Rational tree martingales, Ville's inequality, and computable randomness.
+- The randomness hierarchy: Martin-Löf random implies computably random implies Schnorr
+  random, the second by simulating a computable-real martingale with an exactly rational one.
 
 ## Architecture
 

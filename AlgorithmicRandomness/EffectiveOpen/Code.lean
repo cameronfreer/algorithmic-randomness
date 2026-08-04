@@ -125,6 +125,16 @@ theorem stageSet_subset_denote (e : UniformOpenCode) (n s : ℕ) :
     e.stageSet n s ⊆ e.denote n :=
   Set.subset_iUnion (e.stageSet n) s
 
+/-- A point of a coded c.e. open set has a whole cylinder around it inside the set: the set is
+open, and the witnessing cylinder is one that was actually enumerated. -/
+theorem exists_cylinder_subset_denote {e : UniformOpenCode} {n : ℕ} {x : Cantor}
+    (hx : x ∈ e.denote n) : ∃ σ, x ∈ cylinder σ ∧ cylinder σ ⊆ e.denote n := by
+  obtain ⟨s, hs⟩ := mem_denote.mp hx
+  obtain ⟨σ, hσ, hxσ⟩ := mem_stageSet.mp hs
+  refine ⟨σ, hxσ, ?_⟩
+  refine subset_trans ?_ (stageSet_subset_denote e n s)
+  exact Set.subset_biUnion_of_mem (u := fun τ ↦ cylinder τ) hσ
+
 /-! ## Measure -/
 
 /-- Each finite stage has an exact rational measure. -/

@@ -24,3 +24,4 @@ import AlgorithmicRandomness.Randomness.SchnorrApprox
 import AlgorithmicRandomness.Coding.RatCode
 import AlgorithmicRandomness.Martingale.Simulate
 import AlgorithmicRandomness.Randomness.SchnorrMartingale
+import AlgorithmicRandomness.Randomness.ComputableImpliesSchnorr

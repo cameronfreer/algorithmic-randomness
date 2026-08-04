@@ -160,6 +160,13 @@ theorem initSeg_succ (x : Cantor) (n : ℕ) : initSeg x (n + 1) = initSeg x n ++
 theorem mem_cylinder_initSeg (x : Cantor) (n : ℕ) : x ∈ cylinder (initSeg x n) := fun i ↦
   (List.getElem_ofFn i.isLt).symm
 
+/-- Initial segments of the same point are nested. -/
+theorem initSeg_prefix_of_le {x : Cantor} {m n : ℕ} (h : m ≤ n) :
+    initSeg x m <+: initSeg x n := by
+  unfold initSeg
+  refine List.prefix_iff_eq_take.mpr (List.ext_getElem (by simp [h]) fun i hi₁ hi₂ ↦ ?_)
+  rw [List.getElem_take, List.getElem_ofFn, List.getElem_ofFn]
+
 /-- A point extending `σ` has `σ` as its initial segment of the matching length. -/
 theorem initSeg_of_mem_cylinder {x : Cantor} {σ : BitString} (h : x ∈ cylinder σ) :
     initSeg x σ.length = σ := by
