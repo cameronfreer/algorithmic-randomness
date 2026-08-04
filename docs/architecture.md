@@ -61,6 +61,41 @@ respect a dyadic budget by greedily accepting cylinders along an append-only chr
 truncating what does not fit and leaving compliant families untouched. That combination —
 every candidate made legal, genuine tests unchanged — is what makes a universal test possible.
 
+## Exact rational capital, and simulation across the gap
+
+Martingales in this library carry exact rational capital, because a betting strategy must be
+runnable and later constructions compare its value against coded thresholds. But the martingales
+that arise from measure theory are not rational-valued: the conditional-probability martingale
+of a test, `2^|σ| · μ(Uₙ ∩ [σ])`, is a computable *real*. Bridging that gap is a construction,
+not a translation, and two things had to be established before it could be built.
+
+**Fixed finite stages do not work.** The obvious repair — read each level of the test at one
+scheduled finite stage, so every measure involved is an exact dyadic rational — fails for a
+reason worth recording. A test's modulus bounds the *measure* of the not-yet-enumerated part of
+a level, but says nothing about *which points* lie in it. A captured point can sit in the
+unenumerated remainder of every level simultaneously, so the truncated martingale need not grow
+along it. Nor can this be patched by a measure-theoretic argument: the conclusion is needed at
+one specific point, where almost-everywhere statements say nothing.
+
+**Bounded-error simulation is what works.** The real martingale is kept as a semantic object and
+approximated by a program at a computable rate; a rational martingale is then built by walking
+down the tree and splitting each node's value according to the approximations. Two properties
+make this sound, and they are independent:
+
+- *Fairness is exact by construction.* The two children are set to `x + (a−b)/2` and
+  `x + (b−a)/2` for approximations `a`, `b`, so they sum to `2x` whatever the approximations
+  are. Fairness never depends on approximation quality, which is why an approximate martingale
+  law never has to be reasoned about.
+- *A single invariant bounds the drift.* Each step moves the deviation by at most the current
+  precision, so with a summable precision schedule the total drift along any path is bounded.
+  Initializing the root above the true value by more than that bound then yields, in one stroke,
+  both nonnegativity of the simulated capital and pointwise domination of the original.
+
+Domination is the point: success transfers with nothing further to prove, since a capital that
+dominates an unbounded one is unbounded. That is what allows a theorem whose hypothesis is a
+rational-valued computable martingale to be discharged by a construction that is naturally
+real-valued.
+
 ## Effective and non-effective notions are not conflated
 
 Notions that admit a universal test and notions that do not are kept structurally distinct.
