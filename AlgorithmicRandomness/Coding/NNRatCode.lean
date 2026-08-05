@@ -106,6 +106,50 @@ theorem primrec_half : Primrec half :=
         (Primrec.succ.comp (Primrec.snd.comp Primrec.unpair)))
       (Primrec.const 1))
 
+/-- Multiplication of coded rationals. -/
+def mul (m k : ℕ) : ℕ :=
+  Nat.pair (m.unpair.1 * k.unpair.1) ((m.unpair.2 + 1) * (k.unpair.2 + 1) - 1)
+
+theorem value_mul (m k : ℕ) : value (mul m k) = value m * value k := by
+  have hpos : 0 < (m.unpair.2 + 1) * (k.unpair.2 + 1) :=
+    Nat.mul_pos m.unpair.2.succ_pos k.unpair.2.succ_pos
+  rw [mul, value_pair, Nat.sub_add_cancel hpos, value, value]
+  push_cast
+  rw [div_mul_div_comm]
+
+theorem primrec_mul : Primrec₂ mul :=
+  Primrec₂.natPair.comp
+    (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst))
+      (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd)))
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+      (Primrec.const 1))
+
+/-- Division of coded rationals, correct when the divisor is nonzero. -/
+def div (m k : ℕ) : ℕ :=
+  Nat.pair (m.unpair.1 * (k.unpair.2 + 1)) ((m.unpair.2 + 1) * k.unpair.1 - 1)
+
+theorem value_div {m k : ℕ} (h : 0 < k.unpair.1) : value (div m k) = value m / value k := by
+  have hpos : 0 < (m.unpair.2 + 1) * k.unpair.1 := Nat.mul_pos m.unpair.2.succ_pos h
+  have hk : ((k.unpair.1 : ℚ≥0)) ≠ 0 := by
+    simpa using (Nat.cast_pos (α := ℚ≥0)).mpr h |>.ne'
+  rw [div, value_pair, Nat.sub_add_cancel hpos, value, value]
+  push_cast
+  rw [div_div_eq_mul_div, div_mul_eq_mul_div, mul_comm]
+  field_simp
+
+theorem primrec_div : Primrec₂ div :=
+  Primrec₂.natPair.comp
+    (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst))
+      (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))
+        (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd)))
+      (Primrec.const 1))
+
 /-- Scaling a coded rational by a power of two, which is what a cylinder factor `2^|σ|` is. -/
 def scalePowTwo (k m : ℕ) : ℕ := Nat.pair (2 ^ k * m.unpair.1) m.unpair.2
 
