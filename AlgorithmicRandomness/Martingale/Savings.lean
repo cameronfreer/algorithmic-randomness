@@ -13,8 +13,9 @@ earlier value. Stated without subtraction, since `ℚ≥0` subtraction truncates
 
   `M σ ≤ M (σ ++ τ) + 1`.
 
-Every martingale can be normalized to one with this property that still succeeds on exactly the
-same points, and the normalization is uniform in the martingale: it does not look at any path.
+Every martingale can be normalized to one with this property that still succeeds wherever the
+source succeeds, and the normalization is uniform in the martingale: it does not look at any
+path. (Only that direction is proved here; it is the one the oscillator needs.)
 
 ## The construction
 
@@ -235,5 +236,122 @@ theorem savingsCapital_savings (hpos : ∀ σ, 0 < M.capital σ) (σ τ : BitStr
     _ ≤ savingsPart M (σ ++ τ) + 1 := by gcongr; exact savingsPart_mono M σ τ
     _ ≤ savingsCapital M (σ ++ τ) + 1 := by
         gcongr; exact savingsPart_le_savingsCapital M (σ ++ τ)
+
+/-! ## Counting the banking events
+
+Success is proved by counting. The identity below pins the source capital to the active account
+and the number of banking events, and it holds *because* halving the active account and
+incrementing the count cancel exactly — the same cancellation that makes fairness exact. -/
+
+/-- A banking event occurs at `σ` on bit `b`. -/
+def banked (M : TreeMartingale) (σ : BitString) (b : Bool) : Prop := 1 < nextActive M σ b
+
+instance (M : TreeMartingale) (σ : BitString) (b : Bool) : Decidable (banked M σ b) :=
+  inferInstanceAs (Decidable (1 < nextActive M σ b))
+
+def bankCountStep (M : TreeMartingale) (q : BitString × ℕ) (b : Bool) : BitString × ℕ :=
+  (q.1 ++ [b], if banked M q.1 b then q.2 + 1 else q.2)
+
+def bankCountPair (M : TreeMartingale) (σ : BitString) : BitString × ℕ :=
+  σ.foldl (bankCountStep M) ([], 0)
+
+/-- The number of banking events on the way to `σ`. Proof-only. -/
+def bankCount (M : TreeMartingale) (σ : BitString) : ℕ := (bankCountPair M σ).2
+
+theorem foldl_bankCountStep_fst (M : TreeMartingale) (σ : BitString) :
+    ∀ (τ : BitString) (k : ℕ), (σ.foldl (bankCountStep M) (τ, k)).1 = τ ++ σ := by
+  induction σ with
+  | nil => intro τ k; simp
+  | cons b σ ih => intro τ k; rw [List.foldl_cons, ih]; simp [bankCountStep]
+
+@[simp] theorem bankCountPair_fst (M : TreeMartingale) (σ : BitString) :
+    (bankCountPair M σ).1 = σ := by
+  rw [bankCountPair, foldl_bankCountStep_fst, List.nil_append]
+
+@[simp] theorem bankCount_nil (M : TreeMartingale) : bankCount M [] = 0 := rfl
+
+theorem bankCount_append (M : TreeMartingale) (σ : BitString) (b : Bool) :
+    bankCount M (σ ++ [b]) = if banked M σ b then bankCount M σ + 1 else bankCount M σ := by
+  have h : bankCountPair M (σ ++ [b]) = bankCountStep M (bankCountPair M σ) b := by
+    rw [bankCountPair, bankCountPair, List.foldl_append, List.foldl_cons, List.foldl_nil]
+  unfold bankCount
+  rw [h, bankCountStep, bankCountPair_fst]
+
+/-- The source capital, pinned to the active account and the banking count. Halving the active
+account and incrementing the count cancel, so both branches give the same value. -/
+theorem capital_eq_activePart_mul_pow (hpos : ∀ σ, 0 < M.capital σ) (σ : BitString) :
+    M.capital σ = 2 * activePart M σ * M.capital [] * 2 ^ bankCount M σ := by
+  induction σ using List.reverseRecOn with
+  | nil => rw [activePart_nil, bankCount_nil]; norm_num
+  | append_singleton σ b ih =>
+    have hcancel : 2 * activePart M (σ ++ [b]) * M.capital [] * 2 ^ bankCount M (σ ++ [b])
+        = 2 * nextActive M σ b * M.capital [] * 2 ^ bankCount M σ := by
+      rw [active_append, bankCount_append]
+      unfold banked
+      split
+      · rw [pow_succ]
+        ring
+      · rfl
+    rw [hcancel, nextActive, bettingFactor]
+    rw [show 2 * (activePart M σ * (M.capital (σ ++ [b]) / M.capital σ)) * M.capital []
+          * 2 ^ bankCount M σ
+        = (2 * activePart M σ * M.capital [] * 2 ^ bankCount M σ)
+          * (M.capital (σ ++ [b]) / M.capital σ) by ring, ← ih]
+    rw [mul_div_assoc', mul_comm, mul_div_assoc, div_self (hpos σ).ne', mul_one]
+
+/-- Hence the source capital is bounded by the banking count. -/
+theorem capital_le_pow_bankCount (hpos : ∀ σ, 0 < M.capital σ) (σ : BitString) :
+    M.capital σ ≤ 2 * M.capital [] * 2 ^ bankCount M σ := by
+  rw [capital_eq_activePart_mul_pow hpos σ]
+  have hmul : 2 * activePart M σ * M.capital [] ≤ 2 * M.capital [] := by
+    calc 2 * activePart M σ * M.capital [] ≤ 2 * 1 * M.capital [] := by
+          gcongr; exact activePart_le_one hpos σ
+      _ = 2 * M.capital [] := by ring
+  gcongr
+
+/-- Each banking event adds more than `1/2` to savings. -/
+theorem half_bankCount_le_savingsPart (M : TreeMartingale) (σ : BitString) :
+    (bankCount M σ : ℚ≥0) / 2 ≤ savingsPart M σ := by
+  induction σ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton σ b ih =>
+    rw [savings_append, bankCount_append]
+    unfold banked
+    split
+    · rename_i hc
+      rw [Nat.cast_add, Nat.cast_one, add_div]
+      gcongr
+    · exact ih
+
+/-- Success of the source forces unboundedly many banking events. -/
+theorem exists_bankCount_ge (hpos : ∀ σ, 0 < M.capital σ) {x : Cantor} (h : M.Succeeds x)
+    (k : ℕ) : ∃ n, k ≤ bankCount M (initSeg x n) := by
+  obtain ⟨n, hn⟩ := h (2 * M.capital [] * 2 ^ k + 1)
+  refine ⟨n, ?_⟩
+  by_contra hlt
+  rw [not_le] at hlt
+  have hle : M.capital (initSeg x n) ≤ 2 * M.capital [] * 2 ^ bankCount M (initSeg x n) :=
+    capital_le_pow_bankCount hpos _
+  have hpow : (2 : ℚ≥0) ^ bankCount M (initSeg x n) ≤ 2 ^ k :=
+    pow_le_pow_right₀ (by norm_num) hlt.le
+  have : (2 : ℚ≥0) * M.capital [] * 2 ^ k + 1 ≤ 2 * M.capital [] * 2 ^ k := by
+    refine hn.trans (hle.trans ?_)
+    gcongr
+  simp at this
+
+/-- **Success preservation**: the normalization succeeds wherever the source does. -/
+theorem savingsCapital_succeeds (hpos : ∀ σ, 0 < M.capital σ) {x : Cantor} (h : M.Succeeds x)
+    (c : ℚ≥0) : ∃ n, c ≤ savingsCapital M (initSeg x n) := by
+  obtain ⟨k, hk⟩ := exists_nat_ge ((2 * c : ℚ≥0) : ℝ)
+  obtain ⟨n, hn⟩ := exists_bankCount_ge hpos h k
+  refine ⟨n, ?_⟩
+  have hck : c ≤ (k : ℚ≥0) / 2 := by
+    rw [le_div_iff₀ two_pos, mul_comm]
+    have : ((2 * c : ℚ≥0) : ℝ) ≤ ((k : ℚ≥0) : ℝ) := by exact_mod_cast hk
+    exact_mod_cast this
+  calc c ≤ (k : ℚ≥0) / 2 := hck
+    _ ≤ (bankCount M (initSeg x n) : ℚ≥0) / 2 := by gcongr
+    _ ≤ savingsPart M (initSeg x n) := half_bankCount_le_savingsPart M _
+    _ ≤ savingsCapital M (initSeg x n) := savingsPart_le_savingsCapital M _
 
 end AlgorithmicRandomness
