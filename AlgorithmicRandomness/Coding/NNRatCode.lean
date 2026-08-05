@@ -127,11 +127,24 @@ theorem primrec_mul : Primrec₂ mul :=
         (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
       (Primrec.const 1))
 
+@[simp] theorem value_eq_zero_iff (m : ℕ) : value m = 0 ↔ m.unpair.1 = 0 := by
+  rw [value, div_eq_zero_iff]
+  constructor
+  · rintro (h | h)
+    · exact_mod_cast h
+    · exact absurd h (by positivity)
+  · intro h
+    exact Or.inl (by exact_mod_cast h)
+
+@[simp] theorem value_pos_iff (m : ℕ) : 0 < value m ↔ 0 < m.unpair.1 := by
+  rw [pos_iff_ne_zero, pos_iff_ne_zero, ne_eq, ne_eq, value_eq_zero_iff]
+
 /-- Division of coded rationals, correct when the divisor is nonzero. -/
 def div (m k : ℕ) : ℕ :=
   Nat.pair (m.unpair.1 * (k.unpair.2 + 1)) ((m.unpair.2 + 1) * k.unpair.1 - 1)
 
-theorem value_div {m k : ℕ} (h : 0 < k.unpair.1) : value (div m k) = value m / value k := by
+private theorem value_div_of_num_pos {m k : ℕ} (h : 0 < k.unpair.1) :
+    value (div m k) = value m / value k := by
   have hpos : 0 < (m.unpair.2 + 1) * k.unpair.1 := Nat.mul_pos m.unpair.2.succ_pos h
   have hk : ((k.unpair.1 : ℚ≥0)) ≠ 0 := by
     simpa using (Nat.cast_pos (α := ℚ≥0)).mpr h |>.ne'
@@ -139,6 +152,11 @@ theorem value_div {m k : ℕ} (h : 0 < k.unpair.1) : value (div m k) = value m /
   push_cast
   rw [div_div_eq_mul_div, div_mul_eq_mul_div, mul_comm]
   field_simp
+
+/-- Correctness of division, stated against the *decoded* divisor so that consumers never
+unfold the representation. -/
+theorem value_div {m k : ℕ} (hk : 0 < value k) : value (div m k) = value m / value k :=
+  value_div_of_num_pos ((value_pos_iff k).mp hk)
 
 theorem primrec_div : Primrec₂ div :=
   Primrec₂.natPair.comp
