@@ -26,3 +26,4 @@ import AlgorithmicRandomness.Martingale.Simulate
 import AlgorithmicRandomness.Randomness.SchnorrMartingale
 import AlgorithmicRandomness.Randomness.ComputableImpliesSchnorr
 import AlgorithmicRandomness.Martingale.Savings
+import AlgorithmicRandomness.Martingale.Oscillation

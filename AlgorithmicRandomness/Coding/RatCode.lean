@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Coding.NNRatCode
+import Mathlib.Tactic.Linarith
 
 /-!
 # Coded signed rationals
@@ -110,6 +111,42 @@ theorem value_childUpdate_add (x a b : ℕ) :
     value (childUpdate x a b false) + value (childUpdate x a b true) = 2 * value x := by
   rw [value_childUpdate_false, value_childUpdate_true]
   ring
+
+/-! ## Comparison
+
+Clipping decisions consult these rather than the signed representation: `m ≤ n` is decided as
+`m⁺ + n⁻ ≤ n⁺ + m⁻`, entirely inside the nonnegative layer. -/
+
+def le (m n : ℕ) : Bool :=
+  NNRatCode.le (NNRatCode.add m.unpair.1 n.unpair.2) (NNRatCode.add n.unpair.1 m.unpair.2)
+
+theorem le_iff (m n : ℕ) : le m n = true ↔ value m ≤ value n := by
+  rw [le, NNRatCode.le_iff, NNRatCode.value_add, NNRatCode.value_add, value, value]
+  constructor
+  · intro h
+    have h' : ((NNRatCode.value m.unpair.1 : ℚ)) + (NNRatCode.value n.unpair.2 : ℚ)
+        ≤ (NNRatCode.value n.unpair.1 : ℚ) + (NNRatCode.value m.unpair.2 : ℚ) := by
+      exact_mod_cast h
+    linarith
+  · intro h
+    have h' : ((NNRatCode.value m.unpair.1 : ℚ)) + (NNRatCode.value n.unpair.2 : ℚ)
+        ≤ (NNRatCode.value n.unpair.1 : ℚ) + (NNRatCode.value m.unpair.2 : ℚ) := by linarith
+    exact_mod_cast h'
+
+def lt (m n : ℕ) : Bool := !(le n m)
+
+theorem lt_iff (m n : ℕ) : lt m n = true ↔ value m < value n := by
+  rw [lt, Bool.not_eq_true', ← not_le, ← le_iff n m]
+  simp
+
+theorem primrec_le : Primrec₂ le :=
+  NNRatCode.primrec_le.comp
+    (NNRatCode.primrec_add.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst))
+      (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd)))
+    (NNRatCode.primrec_add.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd))
+      (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))
+
+theorem primrec_lt : Primrec₂ lt := Primrec.not.comp (primrec_le.comp Primrec.snd Primrec.fst)
 
 /-! ## Back to the nonnegative layer -/
 
