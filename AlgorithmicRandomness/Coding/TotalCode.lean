@@ -3,7 +3,7 @@ Copyright (c) 2026 Cameron Freer. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
-import Mathlib.Computability.PartrecCode
+import AlgorithmicRandomness.Coding.Partrec
 
 /-!
 # Codes for total functions
@@ -75,5 +75,13 @@ theorem computable_apply₂ (f : NatFunctionCode) : Computable₂ f.apply₂ :=
   (f.computable_toFun.comp Primrec₂.natPair.to_comp).of_eq fun _ ↦ rfl
 
 end NatFunctionCode
+
+/-- A converged bounded evaluation agrees with the total function the code computes. -/
+theorem evalD_eq {E : NatFunctionCode} {s n : ℕ}
+    (h : (Code.evaln s E.program n).isSome) : evalD E.program s n = E.toFun n := by
+  obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp h
+  have hmem : m ∈ E.program.eval n := Code.evaln_sound hm
+  rw [E.eval_program n, Part.mem_some_iff] at hmem
+  rw [evalD, hm, Option.getD_some, hmem]
 
 end AlgorithmicRandomness

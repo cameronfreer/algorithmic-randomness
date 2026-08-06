@@ -356,14 +356,6 @@ theorem primrec_simAt : Primrec fun z : (Code × ℕ) × BitString ↦ simAt z.1
 
 /-! ## Correctness of the fuel-bounded simulator -/
 
-/-- A converged bounded evaluation agrees with the total function the code computes. -/
-theorem evalD_eq {E : NatFunctionCode} {s n : ℕ}
-    (h : (Code.evaln s E.program n).isSome) : evalD E.program s n = E.toFun n := by
-  obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp h
-  have hmem : m ∈ E.program.eval n := Code.evaln_sound hm
-  rw [E.eval_program n, Part.mem_some_iff] at hmem
-  rw [evalD, hm, Option.getD_some, hmem]
-
 /-- Once every needed evaluation has converged, the bounded simulator computes the intended
 value. -/
 theorem simAt_eq (E : NatFunctionCode) {s : ℕ} :

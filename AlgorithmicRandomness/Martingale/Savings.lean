@@ -403,11 +403,11 @@ One statement covering both accounts, proved by a single induction; the capital 
 projection of it. The hypothesis is that the fuel suffices on every prefix involved, which the
 totality of the source program supplies. -/
 
-/-- The fuel `s` resolves the source program on every prefix of `σ` and its children. -/
+/-- The fuel `s` resolves the source program on every prefix of `σ`. Exactly what the fold
+consults — it never evaluates a sibling, nor anything beyond `σ`, and `evaln` fuel demands grow
+fast enough in the encoded input that the difference is a real execution cost. -/
 def FuelOk (E : NatFunctionCode) (s : ℕ) (σ : BitString) : Prop :=
-  ∀ τ, τ <+: σ → ∀ b : Bool,
-    evalD E.program s (Encodable.encode τ) = E.toFun (Encodable.encode τ) ∧
-    evalD E.program s (Encodable.encode (τ ++ [b])) = E.toFun (Encodable.encode (τ ++ [b]))
+  ∀ τ, τ <+: σ → evalD E.program s (Encodable.encode τ) = E.toFun (Encodable.encode τ)
 
 theorem shiftedCode_value {E : NatFunctionCode} {s : ℕ} {σ : BitString}
     (h : evalD E.program s (Encodable.encode σ) = E.toFun (Encodable.encode σ)) :
@@ -446,9 +446,10 @@ theorem savingsCodePair_value (M : ComputableMartingale) {s : ℕ} {σ : BitStri
     · rw [ha, NNRatCode.value_half, NNRatCode.value_ofNat, activePart_nil]
       norm_num
   | append_singleton σ b ih =>
-    have hσ : FuelOk M.program s σ := fun τ hτ c ↦ hfuel τ (hτ.trans (List.prefix_append σ [b])) c
+    have hσ : FuelOk M.program s σ := fun τ hτ ↦ hfuel τ (hτ.trans (List.prefix_append σ [b]))
     obtain ⟨ihs, iha⟩ := ih hσ
-    obtain ⟨hev, hevb⟩ := hσ σ (List.prefix_refl σ) b
+    have hev := hfuel σ (List.prefix_append σ [b])
+    have hevb := hfuel (σ ++ [b]) (List.prefix_refl _)
     -- the coded next-active decodes to the semantic one
     have hden : 0 < NNRatCode.value (shiftedCode M.program.program s σ) := shiftedCode_pos hev
     have hnext : NNRatCode.value (NNRatCode.mul (savingsCodePair M.program.program s σ).2.2
@@ -486,5 +487,245 @@ theorem savingsCodeCapital_value (M : ComputableMartingale) {s : ℕ} {σ : BitS
       = savingsCapital M.toTreeMartingale.shift σ := by
   obtain ⟨hs, ha⟩ := savingsCodePair_value M hfuel
   rw [savingsCodeCapital, NNRatCode.value_add, hs, ha, savingsCapital]
+
+/-! ## Fuel search and extraction -/
+
+-- Same proof-engineering boundary as elsewhere: the coded arithmetic unfolds into `Nat.unpair`
+-- and hence `Nat.sqrt`, which makes elaboration explode during `Primrec` composition.
+attribute [local irreducible] NNRatCode.add NNRatCode.mul NNRatCode.div NNRatCode.half
+  NNRatCode.lt NNRatCode.ofNat
+
+/-- The executable fuel test: check `[]`, then each extended prefix. -/
+def fuelOkStep (p : Code) (s : ℕ) (q : BitString × Bool) (b : Bool) : BitString × Bool :=
+  (q.1 ++ [b], q.2 && (Code.evaln s p (Encodable.encode (q.1 ++ [b]))).isSome)
+
+def fuelOkPair (p : Code) (s : ℕ) (σ : BitString) : BitString × Bool :=
+  σ.foldl (fuelOkStep p s) ([], (Code.evaln s p (Encodable.encode ([] : BitString))).isSome)
+
+def fuelOk (p : Code) (s : ℕ) (σ : BitString) : Bool := (fuelOkPair p s σ).2
+
+theorem foldl_fuelOkStep_fst (p : Code) (s : ℕ) (σ : BitString) :
+    ∀ (τ : BitString) (v : Bool), (σ.foldl (fuelOkStep p s) (τ, v)).1 = τ ++ σ := by
+  induction σ with
+  | nil => intro τ v; simp
+  | cons b σ ih => intro τ v; rw [List.foldl_cons, ih]; simp [fuelOkStep]
+
+@[simp] theorem fuelOkPair_fst (p : Code) (s : ℕ) (σ : BitString) :
+    (fuelOkPair p s σ).1 = σ := by
+  rw [fuelOkPair, foldl_fuelOkStep_fst, List.nil_append]
+
+@[simp] theorem fuelOk_nil (p : Code) (s : ℕ) :
+    fuelOk p s [] = (Code.evaln s p (Encodable.encode ([] : BitString))).isSome := rfl
+
+theorem fuelOk_append (p : Code) (s : ℕ) (σ : BitString) (b : Bool) :
+    fuelOk p s (σ ++ [b])
+      = (fuelOk p s σ && (Code.evaln s p (Encodable.encode (σ ++ [b]))).isSome) := by
+  have h : fuelOkPair p s (σ ++ [b]) = fuelOkStep p s (fuelOkPair p s σ) b := by
+    rw [fuelOkPair, fuelOkPair, List.foldl_append, List.foldl_cons, List.foldl_nil]
+  unfold fuelOk
+  rw [h, fuelOkStep, fuelOkPair_fst]
+
+/-- The executable test certifies the semantic condition. -/
+theorem fuelOk_spec {E : NatFunctionCode} {s : ℕ} {σ : BitString}
+    (h : fuelOk E.program s σ = true) : FuelOk E s σ := by
+  induction σ using List.reverseRecOn with
+  | nil =>
+    intro τ hτ
+    rw [List.prefix_nil.mp hτ]
+    exact evalD_eq (by simpa using h)
+  | append_singleton σ b ih =>
+    rw [fuelOk_append, Bool.and_eq_true] at h
+    intro τ hτ
+    rcases (List.prefix_concat_iff).mp hτ with hcase | hcase
+    · rw [hcase]; exact evalD_eq h.2
+    · exact ih h.1 τ hcase
+
+/-- Enough fuel always exists, because the source program is total. -/
+theorem exists_fuelOk (E : NatFunctionCode) (σ : BitString) :
+    ∃ s, fuelOk E.program s σ = true := by
+  have hconv : ∀ n : ℕ, ∃ s, (Code.evaln s E.program n).isSome := by
+    intro n
+    obtain ⟨s, hs⟩ := Code.evaln_complete.mp (by rw [E.eval_program n]; exact Part.mem_some _)
+    exact ⟨s, by rw [hs]; rfl⟩
+  have hmono : ∀ {s t n : ℕ}, s ≤ t → (Code.evaln s E.program n).isSome →
+      (Code.evaln t E.program n).isSome := by
+    intro s t n hst h
+    obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp h
+    rw [Code.evaln_mono hst hm]; rfl
+  have hokmono : ∀ {s t : ℕ} {τ : BitString}, s ≤ t → fuelOk E.program s τ = true →
+      fuelOk E.program t τ = true := by
+    intro s t τ hst
+    induction τ using List.reverseRecOn with
+    | nil => intro h; rw [fuelOk_nil] at h ⊢; exact hmono hst h
+    | append_singleton τ c ihτ =>
+      intro h
+      rw [fuelOk_append, Bool.and_eq_true] at h ⊢
+      exact ⟨ihτ h.1, hmono hst h.2⟩
+  induction σ using List.reverseRecOn with
+  | nil =>
+    obtain ⟨s, hs⟩ := hconv (Encodable.encode ([] : BitString))
+    exact ⟨s, by rw [fuelOk_nil, hs]⟩
+  | append_singleton σ b ih =>
+    obtain ⟨s₁, h₁⟩ := ih
+    obtain ⟨s₂, h₂⟩ := hconv (Encodable.encode (σ ++ [b]))
+    refine ⟨max s₁ s₂, ?_⟩
+    rw [fuelOk_append, Bool.and_eq_true]
+    exact ⟨hokmono (le_max_left _ _) h₁, hmono (le_max_right _ _) h₂⟩
+
+/-! ## The program -/
+
+private theorem primrec_fuelOk :
+    Primrec fun z : (Code × ℕ) × BitString ↦ fuelOk z.1.1 z.1.2 z.2 := by
+  have hroot : Primrec fun z : (Code × ℕ) × BitString ↦
+      (([], (Code.evaln z.1.2 z.1.1
+        (Encodable.encode ([] : BitString))).isSome) : BitString × Bool) :=
+    Primrec₂.pair.comp (Primrec.const [])
+      (primrec_isSome.comp (Code.primrec_evaln.comp
+        (((Primrec.snd.comp Primrec.fst).pair (Primrec.fst.comp Primrec.fst)).pair
+          (Primrec.const (Encodable.encode ([] : BitString))))))
+  have hstep : Primrec₂ fun (z : (Code × ℕ) × BitString) (q : (BitString × Bool) × Bool) ↦
+      fuelOkStep z.1.1 z.1.2 q.1 q.2 := by
+    have hpref : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × Bool) × Bool) ↦
+        v.2.1.1 ++ [v.2.2] :=
+      Primrec.list_append.comp (Primrec.fst.comp (Primrec.fst.comp Primrec.snd))
+        (Primrec.list_cons.comp (Primrec.snd.comp Primrec.snd) (Primrec.const []))
+    exact Primrec₂.pair.comp hpref
+      (Primrec.and.comp (Primrec.snd.comp (Primrec.fst.comp Primrec.snd))
+        (primrec_isSome.comp (Code.primrec_evaln.comp
+          (((Primrec.snd.comp (Primrec.fst.comp Primrec.fst)).pair
+            (Primrec.fst.comp (Primrec.fst.comp Primrec.fst))).pair
+            (Primrec.encode.comp hpref)))))
+  exact Primrec.snd.comp (Primrec.list_foldl Primrec.snd hroot hstep)
+
+private theorem primrec_savingsCodeCapital :
+    Primrec fun z : (Code × ℕ) × BitString ↦ savingsCodeCapital z.1.1 z.1.2 z.2 := by
+  have hshift : Primrec fun v : ((Code × ℕ) × BitString) × BitString ↦
+      shiftedCode v.1.1.1 v.1.1.2 v.2 := by
+    unfold shiftedCode
+    exact NNRatCode.primrec_add.comp
+      (primrec_evalD.comp (((Primrec.fst.comp (Primrec.fst.comp Primrec.fst)).pair
+        (Primrec.snd.comp (Primrec.fst.comp Primrec.fst))).pair
+        (Primrec.encode.comp Primrec.snd)))
+      (NNRatCode.primrec_ofNat.comp (Primrec.const 1))
+  have hstep : Primrec₂ fun (z : (Code × ℕ) × BitString)
+      (q : (BitString × ℕ × ℕ) × Bool) ↦ savingsCodeStep z.1.1 z.1.2 q.1 q.2 := by
+    unfold savingsCodeStep
+    have hpref : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × ℕ) × Bool) ↦
+        v.2.1.1 ++ [v.2.2] :=
+      Primrec.list_append.comp (Primrec.fst.comp (Primrec.fst.comp Primrec.snd))
+        (Primrec.list_cons.comp (Primrec.snd.comp Primrec.snd) (Primrec.const []))
+    have hbase : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × ℕ) × Bool) ↦
+        v.1 := Primrec.fst
+    have hchild : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × ℕ) × Bool) ↦
+        shiftedCode v.1.1.1 v.1.1.2 (v.2.1.1 ++ [v.2.2]) := hshift.comp (hbase.pair hpref)
+    have hpar : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × ℕ) × Bool) ↦
+        shiftedCode v.1.1.1 v.1.1.2 v.2.1.1 :=
+      hshift.comp (hbase.pair (Primrec.fst.comp (Primrec.fst.comp Primrec.snd)))
+    have ha' : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × ℕ) × Bool) ↦
+        NNRatCode.mul v.2.1.2.2 (NNRatCode.div
+          (shiftedCode v.1.1.1 v.1.1.2 (v.2.1.1 ++ [v.2.2]))
+          (shiftedCode v.1.1.1 v.1.1.2 v.2.1.1)) :=
+      NNRatCode.primrec_mul.comp
+        (Primrec.snd.comp (Primrec.snd.comp (Primrec.fst.comp Primrec.snd)))
+        (NNRatCode.primrec_div.comp hchild hpar)
+    refine Primrec₂.pair.comp hpref ?_
+    refine Primrec.ite (Primrec.eq.comp
+      (NNRatCode.primrec_lt.comp (NNRatCode.primrec_ofNat.comp (Primrec.const 1)) ha')
+      (Primrec.const true)) ?_ ?_
+    · exact Primrec₂.pair.comp
+        (NNRatCode.primrec_add.comp
+          (Primrec.fst.comp (Primrec.snd.comp (Primrec.fst.comp Primrec.snd)))
+          (NNRatCode.primrec_half.comp ha'))
+        (NNRatCode.primrec_half.comp ha')
+    · exact Primrec₂.pair.comp
+        (Primrec.fst.comp (Primrec.snd.comp (Primrec.fst.comp Primrec.snd))) ha'
+  have hfold : Primrec fun z : (Code × ℕ) × BitString ↦ savingsCodePair z.1.1 z.1.2 z.2 := by
+    unfold savingsCodePair
+    refine Primrec.list_foldl Primrec.snd ?_ hstep
+    exact Primrec₂.pair.comp (Primrec.const [])
+      (Primrec₂.pair.comp (Primrec.const (NNRatCode.ofNat 0))
+        (Primrec.const (NNRatCode.half (NNRatCode.ofNat 1))))
+  unfold savingsCodeCapital
+  exact NNRatCode.primrec_add.comp
+    (Primrec.fst.comp (Primrec.snd.comp hfold)) (Primrec.snd.comp (Primrec.snd.comp hfold))
+
+/-- On input `encode σ`, the coded normalized capital at `σ`. -/
+def savingsEnum (p : Code) : ℕ →. ℕ := fun input ↦
+  (Nat.rfind fun s ↦ Part.some
+      (fuelOk p s ((Encodable.decode input : Option BitString).getD []))).map
+    fun s ↦ savingsCodeCapital p s ((Encodable.decode input : Option BitString).getD [])
+
+/-- The primary computability statement, uniform in the raw source program. -/
+theorem partrec_savingsEnumUniform : Partrec fun z : Code × ℕ ↦ savingsEnum z.1 z.2 := by
+  have hstr : Primrec fun z : Code × ℕ ↦ (Encodable.decode z.2 : Option BitString).getD [] :=
+    Primrec.option_getD.comp (Primrec.decode.comp Primrec.snd) (Primrec.const [])
+  have hok : Primrec fun q : (Code × ℕ) × ℕ ↦
+      fuelOk q.1.1 q.2 ((Encodable.decode q.1.2 : Option BitString).getD []) :=
+    primrec_fuelOk.comp
+      (((Primrec.fst.comp Primrec.fst).pair Primrec.snd).pair (hstr.comp Primrec.fst))
+  have hval : Primrec fun q : (Code × ℕ) × ℕ ↦
+      savingsCodeCapital q.1.1 q.2 ((Encodable.decode q.1.2 : Option BitString).getD []) :=
+    primrec_savingsCodeCapital.comp
+      (((Primrec.fst.comp Primrec.fst).pair Primrec.snd).pair (hstr.comp Primrec.fst))
+  exact Partrec.map (Partrec.rfind (Computable₂.partrec₂ hok.to_comp.to₂)) hval.to_comp.to₂
+
+theorem partrec_savingsEnum (p : Code) : Nat.Partrec (savingsEnum p) :=
+  Partrec.nat_iff.mp ((partrec_savingsEnumUniform.comp
+    (Computable.pair (Computable.const p) Computable.id)).of_eq fun _ ↦ rfl)
+
+/-! ## The bundled normalization -/
+
+/-- A computable martingale with the savings property. -/
+structure SavingsComputableMartingale extends ComputableMartingale where
+  /-- The capital never falls more than `1` below any earlier value. -/
+  savingsProperty : ∀ σ τ, toTreeMartingale.capital σ ≤ toTreeMartingale.capital (σ ++ τ) + 1
+
+namespace ComputableMartingale
+
+variable (M : ComputableMartingale)
+
+theorem savingsEnum_dom (input : ℕ) : (savingsEnum M.program.program input).Dom := by
+  obtain ⟨s, hs⟩ := exists_fuelOk M.program ((Encodable.decode input : Option BitString).getD [])
+  obtain ⟨t, htmem, -⟩ := Nat.rfind_min'
+    (p := fun s ↦ fuelOk M.program.program s
+      ((Encodable.decode input : Option BitString).getD [])) (m := s) hs
+  exact Part.dom_iff_mem.mpr ⟨_, Part.mem_map _ htmem⟩
+
+/-- The program computing the normalized capital. -/
+noncomputable def savingsFunctionCode : NatFunctionCode :=
+  NatFunctionCode.ofPartrecTotal (partrec_savingsEnum M.program.program) M.savingsEnum_dom
+
+theorem savingsFunctionCode_value (σ : BitString) :
+    NNRatCode.value (M.savingsFunctionCode.toFun (Encodable.encode σ))
+      = savingsCapital M.toTreeMartingale.shift σ := by
+  have hmem : M.savingsFunctionCode.toFun (Encodable.encode σ)
+      ∈ savingsEnum M.program.program (Encodable.encode σ) := by
+    rw [savingsFunctionCode, NatFunctionCode.ofPartrecTotal_toFun]
+    exact Part.get_mem _
+  rw [savingsEnum, Encodable.encodek, Option.getD_some, Part.mem_map_iff] at hmem
+  obtain ⟨s, hs, hval⟩ := hmem
+  have hok : fuelOk M.program.program s σ = true := by
+    have := Nat.rfind_spec hs; simpa using this
+  rw [← hval]
+  exact savingsCodeCapital_value M (fuelOk_spec hok)
+
+/-- **The savings normalization**: uniform in `M`, with no reference to any path. -/
+noncomputable def withSavings : SavingsComputableMartingale where
+  capital := savingsCapital M.toTreeMartingale.shift
+  fair := savingsCapital_fair M.toTreeMartingale.shift_pos
+  program := M.savingsFunctionCode
+  eval_capital := M.savingsFunctionCode_value
+  savingsProperty := savingsCapital_savings M.toTreeMartingale.shift_pos
+
+@[simp] theorem withSavings_capital (σ : BitString) :
+    M.withSavings.capital σ = savingsCapital M.toTreeMartingale.shift σ := rfl
+
+/-- Success is preserved, for every path. -/
+theorem succeeds_withSavings {x : Cantor} (h : M.Succeeds x) : M.withSavings.Succeeds x := by
+  intro c
+  exact savingsCapital_succeeds M.toTreeMartingale.shift_pos
+    (TreeMartingale.succeeds_shift h) c
+
+end ComputableMartingale
 
 end AlgorithmicRandomness
