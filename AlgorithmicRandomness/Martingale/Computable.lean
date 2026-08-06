@@ -38,6 +38,30 @@ structure ComputableMartingale extends TreeMartingale where
 def TreeMartingale.Succeeds (d : TreeMartingale) (x : Cantor) : Prop :=
   ∀ c : ℚ≥0, ∃ n, c ≤ d.capital (initSeg x n)
 
+/-- Success happens arbitrarily late, not merely once: every finite initial segment of the
+capital sequence is bounded, so a threshold beyond that bound is met past any given index. This
+removes the repeated "choose a value beyond the finite prefix" step from later arguments. -/
+theorem TreeMartingale.Succeeds.frequently_ge {d : TreeMartingale} {x : Cantor}
+    (h : d.Succeeds x) (c : ℚ≥0) : ∃ᶠ n in Filter.atTop, c ≤ d.capital (initSeg x n) := by
+  rw [Filter.frequently_atTop]
+  intro N
+  set S := ∑ i ∈ Finset.range (N + 1), d.capital (initSeg x i) with hS
+  obtain ⟨n, hn⟩ := h (c + S + 1)
+  refine ⟨n, ?_, le_trans (le_add_right (le_add_right (le_refl c))) hn⟩
+  by_contra hlt
+  rw [not_le] at hlt
+  -- an index at most `N` has its capital inside the finite sum, contradicting the threshold
+  have hle : d.capital (initSeg x n) ≤ S :=
+    Finset.single_le_sum (f := fun i ↦ d.capital (initSeg x i)) (fun _ _ ↦ zero_le)
+      (Finset.mem_range.mpr (by omega))
+  have hcontra : c + 1 ≤ 0 := by
+    refine le_of_add_le_add_left (a := S) ?_
+    rw [add_zero]
+    calc S + (c + 1) = c + S + 1 := by ring
+      _ ≤ d.capital (initSeg x n) := hn
+      _ ≤ S := hle
+  exact absurd (le_trans le_add_self hcontra) (by norm_num)
+
 /-- A point is computably random when no computable martingale succeeds on it. -/
 def IsComputablyRandom (x : Cantor) : Prop := ∀ d : ComputableMartingale, ¬d.Succeeds x
 
