@@ -36,15 +36,22 @@ open scoped NNRat
 
 namespace AlgorithmicRandomness
 
+/-- The source capital as a signed rational. -/
+def srcCapital (M : TreeMartingale) (σ : BitString) : ℚ := ((M.capital σ : ℚ≥0) : ℚ)
+
 /-- The capital increment of `M` at `σ` on bit `b`, as a signed rational. -/
 def increment (M : TreeMartingale) (σ : BitString) (b : Bool) : ℚ :=
-  ((M.capital (σ ++ [b]) : ℚ≥0) : ℚ) - ((M.capital σ : ℚ≥0) : ℚ)
+  srcCapital M (σ ++ [b]) - srcCapital M σ
+
+theorem srcCapital_append (M : TreeMartingale) (σ : BitString) (b : Bool) :
+    srcCapital M (σ ++ [b]) = srcCapital M σ + increment M σ b := by
+  rw [increment]; ring
 
 /-- The two increments cancel, because the source is a martingale. -/
 theorem increment_add (M : TreeMartingale) (σ : BitString) :
     increment M σ false + increment M σ true = 0 := by
-  have h : ((M.capital (σ ++ [false]) : ℚ≥0) : ℚ) + ((M.capital (σ ++ [true]) : ℚ≥0) : ℚ)
-      = 2 * ((M.capital σ : ℚ≥0) : ℚ) := by exact_mod_cast M.fair σ
+  have h : srcCapital M (σ ++ [false]) + srcCapital M (σ ++ [true]) = 2 * srcCapital M σ := by
+    rw [srcCapital, srcCapital, srcCapital]; exact_mod_cast M.fair σ
   rw [increment, increment]
   linarith
 
@@ -132,5 +139,181 @@ theorem oscPair_append_eq (M : TreeMartingale) (σ : BitString) (b : Bool) :
   · split
     · rfl
     · split <;> rfl
+
+/-! ## The phase invariant
+
+Fairness is *not* available for an arbitrary state: in the up phase with `v = 4` and zero
+increment, both children would clip to `3`, giving `6 ≠ 8`. What excludes this is the threshold
+component below — an up-phase value is always `< 3`, so `r₀ + r₁ = 2v < 6` and at most one child
+can cross. The invariant must therefore be proved before fairness, not after.
+
+The history component carries a witness of the last phase switch, stated without subtraction.
+It says the oscillator has gained at least as much as the source since that switch, which is
+exactly what the savings property converts into the `[1, 4]` bounds. -/
+
+/-- The threshold and history invariant at `σ`. -/
+def PhaseInv (M : TreeMartingale) (σ : BitString) : Prop :=
+  if phase M σ then
+    rawValue M σ < 3 ∧ ∃ ρ, ρ <+: σ ∧ rawValue M ρ = 2 ∧
+      2 + srcCapital M σ ≤ rawValue M σ + srcCapital M ρ
+  else
+    2 < rawValue M σ ∧ ∃ ρ, ρ <+: σ ∧ rawValue M ρ = 3 ∧
+      rawValue M σ + srcCapital M σ ≤ 3 + srcCapital M ρ
+
+theorem phaseInv (M : TreeMartingale) (σ : BitString) : PhaseInv M σ := by
+  induction σ using List.reverseRecOn with
+  | nil =>
+    rw [PhaseInv, phase_nil, if_pos rfl, rawValue_nil]
+    exact ⟨by norm_num, [], List.nil_prefix, rawValue_nil M, by norm_num⟩
+  | append_singleton σ b ih =>
+    have hstep := oscPair_append_eq M σ b
+    rw [PhaseInv] at ih ⊢
+    by_cases hph : phase M σ = true
+    · -- up phase at `σ`
+      rw [if_pos hph] at ih hstep
+      obtain ⟨hlt, ρ, hρpre, hρval, hρineq⟩ := ih
+      by_cases h1 : 3 ≤ rawValue M σ + increment M σ b
+      · -- this child clips at `3` and switches down; it is its own witness
+        rw [if_pos h1] at hstep
+        obtain ⟨hv, hp⟩ := Prod.mk.injEq .. ▸ hstep
+        rw [hp, if_neg (by simp)]
+        refine ⟨by rw [hv]; norm_num, σ ++ [b], List.prefix_refl _, hv, ?_⟩
+        rw [hv]
+      · rw [if_neg h1] at hstep
+        by_cases h2 : 3 ≤ rawValue M σ - increment M σ b
+        · -- the sibling clips; this child is raised to `2 v - 3` and stays up
+          rw [if_pos h2] at hstep
+          obtain ⟨hv, hp⟩ := Prod.mk.injEq .. ▸ hstep
+          rw [hp, if_pos rfl]
+          refine ⟨by rw [hv]; linarith, ρ, hρpre.trans (List.prefix_append σ [b]), hρval, ?_⟩
+          rw [hv, srcCapital_append]
+          linarith
+        · -- neither clips
+          rw [if_neg h2] at hstep
+          obtain ⟨hv, hp⟩ := Prod.mk.injEq .. ▸ hstep
+          rw [hp, if_pos rfl]
+          refine ⟨by rw [hv]; linarith, ρ, hρpre.trans (List.prefix_append σ [b]), hρval, ?_⟩
+          rw [hv, srcCapital_append]
+          linarith
+    · -- down phase at `σ`
+      rw [Bool.not_eq_true] at hph
+      rw [if_neg (by simp [hph])] at ih
+      rw [if_neg (by simp [hph])] at hstep
+      obtain ⟨hgt, ρ, hρpre, hρval, hρineq⟩ := ih
+      by_cases h1 : rawValue M σ - increment M σ b ≤ 2
+      · rw [if_pos h1] at hstep
+        obtain ⟨hv, hp⟩ := Prod.mk.injEq .. ▸ hstep
+        rw [hp, if_pos rfl]
+        refine ⟨by rw [hv]; norm_num, σ ++ [b], List.prefix_refl _, hv, ?_⟩
+        rw [hv]
+      · rw [if_neg h1] at hstep
+        by_cases h2 : rawValue M σ + increment M σ b ≤ 2
+        · rw [if_pos h2] at hstep
+          obtain ⟨hv, hp⟩ := Prod.mk.injEq .. ▸ hstep
+          rw [hp, if_neg (by simp)]
+          refine ⟨by rw [hv]; linarith, ρ, hρpre.trans (List.prefix_append σ [b]), hρval, ?_⟩
+          rw [hv, srcCapital_append]
+          linarith
+        · rw [if_neg h2] at hstep
+          obtain ⟨hv, hp⟩ := Prod.mk.injEq .. ▸ hstep
+          rw [hp, if_neg (by simp)]
+          refine ⟨by rw [hv]; linarith, ρ, hρpre.trans (List.prefix_append σ [b]), hρval, ?_⟩
+          rw [hv, srcCapital_append]
+          linarith
+
+theorem rawValue_lt_three (M : TreeMartingale) {σ : BitString} (h : phase M σ = true) :
+    rawValue M σ < 3 := by
+  have := phaseInv M σ
+  rw [PhaseInv, if_pos h] at this
+  exact this.1
+
+theorem two_lt_rawValue (M : TreeMartingale) {σ : BitString} (h : phase M σ = false) :
+    2 < rawValue M σ := by
+  have := phaseInv M σ
+  rw [PhaseInv, if_neg (by simp [h])] at this
+  exact this.1
+
+/-! ## Crossing uniqueness and fairness -/
+
+theorem rawValue_append (M : TreeMartingale) (σ : BitString) (b : Bool) :
+    rawValue M (σ ++ [b])
+      = if phase M σ then
+          (if 3 ≤ rawValue M σ + increment M σ b then 3
+           else if 3 ≤ rawValue M σ - increment M σ b then 2 * rawValue M σ - 3
+           else rawValue M σ + increment M σ b)
+        else
+          (if rawValue M σ - increment M σ b ≤ 2 then 2
+           else if rawValue M σ + increment M σ b ≤ 2 then 2 * rawValue M σ - 2
+           else rawValue M σ - increment M σ b) := by
+  have h := congrArg Prod.fst (oscPair_append_eq M σ b)
+  simpa only [apply_ite Prod.fst] using h
+
+theorem phase_append (M : TreeMartingale) (σ : BitString) (b : Bool) :
+    phase M (σ ++ [b])
+      = if phase M σ then
+          (if 3 ≤ rawValue M σ + increment M σ b then false else true)
+        else
+          (if rawValue M σ - increment M σ b ≤ 2 then true else false) := by
+  have h := congrArg Prod.snd (oscPair_append_eq M σ b)
+  simpa only [apply_ite Prod.snd, ite_self] using h
+
+/-- **Crossing uniqueness.** In the up phase the two candidate values sum to `2 v < 6`, so at
+most one can reach `3`; dually in the down phase. This is what makes the clipping rule
+consistent, and hence what makes the recursion fair. -/
+theorem not_both_cross_up (M : TreeMartingale) {σ : BitString} (h : phase M σ = true) :
+    ¬(3 ≤ rawValue M σ + increment M σ false ∧ 3 ≤ rawValue M σ + increment M σ true) := by
+  rintro ⟨h0, h1⟩
+  have hsum := increment_add M σ
+  have := rawValue_lt_three M h
+  linarith
+
+theorem not_both_cross_down (M : TreeMartingale) {σ : BitString} (h : phase M σ = false) :
+    ¬(rawValue M σ - increment M σ false ≤ 2 ∧ rawValue M σ - increment M σ true ≤ 2) := by
+  rintro ⟨h0, h1⟩
+  have hsum := increment_add M σ
+  have := two_lt_rawValue M h
+  linarith
+
+/-- **Exact fairness**, available only once crossing uniqueness rules out the double-clip. -/
+theorem rawValue_fair (M : TreeMartingale) (σ : BitString) :
+    rawValue M (σ ++ [false]) + rawValue M (σ ++ [true]) = 2 * rawValue M σ := by
+  have hf := rawValue_append M σ false
+  have ht := rawValue_append M σ true
+  have hsum := increment_add M σ
+  by_cases hph : phase M σ = true
+  · rw [if_pos hph] at hf ht
+    have huniq := not_both_cross_up M hph
+    by_cases h0 : 3 ≤ rawValue M σ + increment M σ false
+    · -- the `false` child clips; the `true` child is the raised sibling
+      have h1 : ¬(3 ≤ rawValue M σ + increment M σ true) := fun h ↦ huniq ⟨h0, h⟩
+      rw [if_pos h0] at hf
+      rw [if_neg h1, if_pos (by linarith)] at ht
+      rw [hf, ht]; ring
+    · rw [if_neg h0] at hf
+      by_cases h1 : 3 ≤ rawValue M σ + increment M σ true
+      · rw [if_pos h1] at ht
+        rw [if_pos (by linarith)] at hf
+        rw [hf, ht]; ring
+      · rw [if_neg h1] at ht
+        rw [if_neg (by linarith : ¬(3 ≤ rawValue M σ - increment M σ false))] at hf
+        rw [if_neg (by linarith : ¬(3 ≤ rawValue M σ - increment M σ true))] at ht
+        rw [hf, ht]; linarith
+  · rw [Bool.not_eq_true] at hph
+    rw [if_neg (by simp [hph])] at hf ht
+    have huniq := not_both_cross_down M hph
+    by_cases h0 : rawValue M σ - increment M σ false ≤ 2
+    · have h1 : ¬(rawValue M σ - increment M σ true ≤ 2) := fun h ↦ huniq ⟨h0, h⟩
+      rw [if_pos h0] at hf
+      rw [if_neg h1, if_pos (by linarith)] at ht
+      rw [hf, ht]; ring
+    · rw [if_neg h0] at hf
+      by_cases h1 : rawValue M σ - increment M σ true ≤ 2
+      · rw [if_pos h1] at ht
+        rw [if_pos (by linarith)] at hf
+        rw [hf, ht]; ring
+      · rw [if_neg h1] at ht
+        rw [if_neg (by linarith : ¬(rawValue M σ + increment M σ false ≤ 2))] at hf
+        rw [if_neg (by linarith : ¬(rawValue M σ + increment M σ true ≤ 2))] at ht
+        rw [hf, ht]; linarith
 
 end AlgorithmicRandomness
