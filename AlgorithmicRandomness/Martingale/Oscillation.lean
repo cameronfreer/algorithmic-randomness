@@ -362,4 +362,85 @@ theorem rawValue_nonneg (M : TreeMartingale) (hsav : M.SavingsProperty) (σ : Bi
   have := (rawValue_mem_Icc M hsav σ).1
   linarith
 
+/-! ## Phase transitions and constant-phase runs
+
+The step inequalities below say the oscillator does at least as well as the source while the
+phase holds. Sibling clipping moves each one in the favorable direction, since the retained
+sibling is raised in the up phase and lowered in the down phase. They are stated for any
+constant-phase interval — no maximality, and no stored "last switch" data. -/
+
+/-- Crossing up pins the value to exactly `3`. -/
+theorem rawValue_eq_three_of_switch (M : TreeMartingale) {σ : BitString} {b : Bool}
+    (hσ : phase M σ = true) (hnext : phase M (σ ++ [b]) = false) :
+    rawValue M (σ ++ [b]) = 3 := by
+  rw [phase_append, if_pos hσ] at hnext
+  by_cases h : 3 ≤ rawValue M σ + increment M σ b
+  · rw [rawValue_append, if_pos hσ, if_pos h]
+  · rw [if_neg h] at hnext; exact absurd hnext (by simp)
+
+/-- Crossing down pins the value to exactly `2`. -/
+theorem rawValue_eq_two_of_switch (M : TreeMartingale) {σ : BitString} {b : Bool}
+    (hσ : phase M σ = false) (hnext : phase M (σ ++ [b]) = true) :
+    rawValue M (σ ++ [b]) = 2 := by
+  rw [phase_append, if_neg (by simp [hσ])] at hnext
+  by_cases h : rawValue M σ - increment M σ b ≤ 2
+  · rw [rawValue_append, if_neg (by simp [hσ]), if_pos h]
+  · rw [if_neg h] at hnext; exact absurd hnext (by simp)
+
+/-- While the up phase holds, the oscillator gains at least what the source gains. -/
+theorem up_step_le (M : TreeMartingale) {σ : BitString} {b : Bool}
+    (hσ : phase M σ = true) (hnext : phase M (σ ++ [b]) = true) :
+    rawValue M σ + srcCapital M (σ ++ [b]) ≤ rawValue M (σ ++ [b]) + srcCapital M σ := by
+  have hno : ¬(3 ≤ rawValue M σ + increment M σ b) := by
+    intro h
+    rw [phase_append, if_pos hσ, if_pos h] at hnext
+    exact absurd hnext (by simp)
+  rw [srcCapital_append, rawValue_append, if_pos hσ, if_neg hno]
+  by_cases h2 : 3 ≤ rawValue M σ - increment M σ b
+  · rw [if_pos h2]; linarith
+  · rw [if_neg h2]; linarith
+
+/-- While the down phase holds, the oscillator loses at most what the source gains. -/
+theorem down_step_le (M : TreeMartingale) {σ : BitString} {b : Bool}
+    (hσ : phase M σ = false) (hnext : phase M (σ ++ [b]) = false) :
+    rawValue M (σ ++ [b]) + srcCapital M (σ ++ [b]) ≤ rawValue M σ + srcCapital M σ := by
+  have hno : ¬(rawValue M σ - increment M σ b ≤ 2) := by
+    intro h
+    rw [phase_append, if_neg (by simp [hσ]), if_pos h] at hnext
+    exact absurd hnext (by simp)
+  rw [srcCapital_append, rawValue_append, if_neg (by simp [hσ]), if_neg hno]
+  by_cases h2 : rawValue M σ + increment M σ b ≤ 2
+  · rw [if_pos h2]; linarith
+  · rw [if_neg h2]; linarith
+
+/-- Telescoped over a constant up-phase interval. -/
+theorem up_run_le (M : TreeMartingale) (x : Cantor) {n m : ℕ} (hnm : n ≤ m)
+    (hphase : ∀ k, n ≤ k → k ≤ m → phase M (initSeg x k) = true) :
+    rawValue M (initSeg x n) + srcCapital M (initSeg x m)
+      ≤ rawValue M (initSeg x m) + srcCapital M (initSeg x n) := by
+  induction m, hnm using Nat.le_induction with
+  | base => linarith
+  | succ m hm ih =>
+    have hres : ∀ k, n ≤ k → k ≤ m → phase M (initSeg x k) = true :=
+      fun k h1 h2 ↦ hphase k h1 (h2.trans (Nat.le_succ m))
+    have hstep := up_step_le M (b := x m) (hphase m hm (Nat.le_succ m))
+      (by rw [← initSeg_succ]; exact hphase (m + 1) (hm.trans (Nat.le_succ m)) (le_refl _))
+    rw [initSeg_succ] at *
+    linarith [ih hres]
+
+/-- Telescoped over a constant down-phase interval. -/
+theorem down_run_le (M : TreeMartingale) (x : Cantor) {n m : ℕ} (hnm : n ≤ m)
+    (hphase : ∀ k, n ≤ k → k ≤ m → phase M (initSeg x k) = false) :
+    rawValue M (initSeg x m) + srcCapital M (initSeg x m)
+      ≤ rawValue M (initSeg x n) + srcCapital M (initSeg x n) := by
+  induction m, hnm using Nat.le_induction with
+  | base => linarith
+  | succ m hm ih =>
+    have hres : ∀ k, n ≤ k → k ≤ m → phase M (initSeg x k) = false :=
+      fun k h1 h2 ↦ hphase k h1 (h2.trans (Nat.le_succ m))
+    have hstep := down_step_le M (b := x m) (hphase m hm (Nat.le_succ m))
+      (by rw [← initSeg_succ]; exact hphase (m + 1) (hm.trans (Nat.le_succ m)) (le_refl _))
+    rw [initSeg_succ] at *
+    linarith [ih hres]
+
 end AlgorithmicRandomness
