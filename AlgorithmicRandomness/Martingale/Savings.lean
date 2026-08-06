@@ -46,6 +46,11 @@ open scoped NNRat
 
 namespace AlgorithmicRandomness
 
+/-- The capital never falls more than `1` below any earlier value. Stated without subtraction,
+since `ℚ≥0` subtraction truncates. -/
+def TreeMartingale.SavingsProperty (M : TreeMartingale) : Prop :=
+  ∀ σ τ, M.capital σ ≤ M.capital (σ ++ τ) + 1
+
 /-! ## The positive shift
 
 Betting in proportion requires a positive denominator, so the source is shifted first. -/
@@ -678,7 +683,7 @@ theorem partrec_savingsEnum (p : Code) : Nat.Partrec (savingsEnum p) :=
 /-- A computable martingale with the savings property. -/
 structure SavingsComputableMartingale extends ComputableMartingale where
   /-- The capital never falls more than `1` below any earlier value. -/
-  savingsProperty : ∀ σ τ, toTreeMartingale.capital σ ≤ toTreeMartingale.capital (σ ++ τ) + 1
+  savingsProperty : toTreeMartingale.SavingsProperty
 
 namespace ComputableMartingale
 

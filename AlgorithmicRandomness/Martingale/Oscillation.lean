@@ -316,4 +316,50 @@ theorem rawValue_fair (M : TreeMartingale) (σ : BitString) :
         rw [if_neg (by linarith : ¬(rawValue M σ + increment M σ true ≤ 2))] at ht
         rw [hf, ht]; linarith
 
+/-! ## The bounds
+
+The witness inequalities become `[1, 4]` in one step, because the savings property says the
+source cannot have fallen more than `1` since the witnessed phase switch. This is the only
+place the savings property is used, and it is why mere positivity would not suffice. -/
+
+theorem srcCapital_le_of_prefix (M : TreeMartingale) (hsav : M.SavingsProperty)
+    {ρ σ : BitString} (h : ρ <+: σ) : srcCapital M ρ ≤ srcCapital M σ + 1 := by
+  obtain ⟨τ, rfl⟩ := h
+  have hs := hsav ρ τ
+  rw [srcCapital, srcCapital]
+  exact_mod_cast hs
+
+theorem rawValue_bounds_of_up (M : TreeMartingale) (hsav : M.SavingsProperty) {σ : BitString}
+    (h : phase M σ = true) : 1 ≤ rawValue M σ ∧ rawValue M σ < 3 := by
+  have hinv := phaseInv M σ
+  rw [PhaseInv, if_pos h] at hinv
+  obtain ⟨hlt, ρ, hρpre, -, hρineq⟩ := hinv
+  refine ⟨?_, hlt⟩
+  have := srcCapital_le_of_prefix M hsav hρpre
+  linarith
+
+theorem rawValue_bounds_of_down (M : TreeMartingale) (hsav : M.SavingsProperty) {σ : BitString}
+    (h : phase M σ = false) : 2 < rawValue M σ ∧ rawValue M σ ≤ 4 := by
+  have hinv := phaseInv M σ
+  rw [PhaseInv, if_neg (by simp [h])] at hinv
+  obtain ⟨hgt, ρ, hρpre, -, hρineq⟩ := hinv
+  refine ⟨hgt, ?_⟩
+  have := srcCapital_le_of_prefix M hsav hρpre
+  linarith
+
+theorem rawValue_mem_Icc (M : TreeMartingale) (hsav : M.SavingsProperty) (σ : BitString) :
+    rawValue M σ ∈ Set.Icc (1 : ℚ) 4 := by
+  by_cases h : phase M σ = true
+  · obtain ⟨h1, h2⟩ := rawValue_bounds_of_up M hsav h
+    exact ⟨h1, by linarith⟩
+  · rw [Bool.not_eq_true] at h
+    obtain ⟨h1, h2⟩ := rawValue_bounds_of_down M hsav h
+    exact ⟨by linarith, h2⟩
+
+/-- The sole license needed to convert the signed value back to the nonnegative layer. -/
+theorem rawValue_nonneg (M : TreeMartingale) (hsav : M.SavingsProperty) (σ : BitString) :
+    0 ≤ rawValue M σ := by
+  have := (rawValue_mem_Icc M hsav σ).1
+  linarith
+
 end AlgorithmicRandomness
