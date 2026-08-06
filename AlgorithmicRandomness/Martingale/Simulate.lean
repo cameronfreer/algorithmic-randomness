@@ -261,15 +261,6 @@ open Nat.Partrec (Code)
 -- in this section needs to see through the definitions.
 attribute [local irreducible] RatCode.childUpdate RatCode.add RatCode.ofNNRat RatCode.ofNat
 
-/-- Bounded evaluation with a default, so the value fold never carries an `Option`. -/
-def evalD (p : Code) (s n : ℕ) : ℕ := (Code.evaln s p n).getD 0
-
-private theorem primrec_evalD : Primrec fun z : (Code × ℕ) × ℕ ↦ evalD z.1.1 z.1.2 z.2 :=
-  Primrec.option_getD.comp
-    (Code.primrec_evaln.comp
-      (((Primrec.snd.comp Primrec.fst).pair (Primrec.fst.comp Primrec.fst)).pair Primrec.snd))
-    (Primrec.const 0)
-
 /-- The fuel-bounded analogue of `simRoot`. -/
 def simRootAt (p : Code) (s : ℕ) : BitString × ℕ :=
   ([], RatCode.add (RatCode.ofNNRat (evalD p s (Nat.pair (Encodable.encode ([] : BitString)) 0)))

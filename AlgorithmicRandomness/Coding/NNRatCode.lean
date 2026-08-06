@@ -199,6 +199,18 @@ theorem le_iff (m k : ℕ) : le m k = true ↔ value m ≤ value k := by
         ≤ ((k.unpair.1 * (m.unpair.2 + 1) : ℕ) : ℚ≥0) := by push_cast; exact_mod_cast h
     exact_mod_cast this
 
+/-- Strict comparison, as the negation of the reverse comparison. -/
+def lt (m k : ℕ) : Bool := !(le k m)
+
+theorem lt_iff (m k : ℕ) : lt m k = true ↔ value m < value k := by
+  rw [lt, Bool.not_eq_true', ← not_le, ← le_iff k m]
+  simp
+
+/-- A natural, as a coded rational. -/
+def ofNat (k : ℕ) : ℕ := Nat.pair k 0
+
+@[simp] theorem value_ofNat (k : ℕ) : value (ofNat k) = (k : ℚ≥0) := value_pair_zero k
+
 /-- The acceptance criterion for the representation: comparison is primitive recursive. -/
 theorem primrec_le : Primrec₂ le := by
   have h : PrimrecPred fun z : ℕ × ℕ ↦
@@ -209,6 +221,12 @@ theorem primrec_le : Primrec₂ le := by
       (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd))
         (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst))))
   exact primrecPred_iff_primrec_decide.mp h
+
+theorem primrec_lt : Primrec₂ lt :=
+  Primrec.not.comp (primrec_le.comp Primrec.snd Primrec.fst)
+
+theorem primrec_ofNat : Primrec ofNat :=
+  Primrec₂.natPair.comp Primrec.id (Primrec.const 0)
 
 end NNRatCode
 end AlgorithmicRandomness

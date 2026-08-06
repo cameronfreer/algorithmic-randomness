@@ -3,6 +3,8 @@ Copyright (c) 2026 Cameron Freer. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
+import AlgorithmicRandomness.Coding.Partrec
+import AlgorithmicRandomness.Coding.TotalCode
 import AlgorithmicRandomness.Martingale.Computable
 
 /-!
@@ -353,5 +355,136 @@ theorem savingsCapital_succeeds (hpos : ∀ σ, 0 < M.capital σ) {x : Cantor} (
     _ ≤ (bankCount M (initSeg x n) : ℚ≥0) / 2 := by gcongr
     _ ≤ savingsPart M (initSeg x n) := half_bankCount_le_savingsPart M _
     _ ≤ savingsCapital M (initSeg x n) := savingsPart_le_savingsCapital M _
+
+/-! ## The coded fold
+
+The same walk, on codes. The state carries the prefix and the two accounts as `NNRatCode`
+values, and the correspondence below is proved once at the level of the whole state; the
+capital statement is then a projection rather than a second induction. -/
+
+open Nat.Partrec (Code)
+
+/-- The coded shifted capital of the source at `σ`. -/
+def shiftedCode (p : Code) (s : ℕ) (σ : BitString) : ℕ :=
+  NNRatCode.add (evalD p s (Encodable.encode σ)) (NNRatCode.ofNat 1)
+
+/-- One step of the coded fold, mirroring `savingsStep`. -/
+def savingsCodeStep (p : Code) (s : ℕ) (q : BitString × ℕ × ℕ) (b : Bool) : BitString × ℕ × ℕ :=
+  let a' := NNRatCode.mul q.2.2
+    (NNRatCode.div (shiftedCode p s (q.1 ++ [b])) (shiftedCode p s q.1))
+  (q.1 ++ [b],
+    if NNRatCode.lt (NNRatCode.ofNat 1) a' then (NNRatCode.add q.2.1 (NNRatCode.half a'),
+      NNRatCode.half a') else (q.2.1, a'))
+
+def savingsCodePair (p : Code) (s : ℕ) (σ : BitString) : BitString × ℕ × ℕ :=
+  σ.foldl (savingsCodeStep p s) ([], (NNRatCode.ofNat 0, NNRatCode.half (NNRatCode.ofNat 1)))
+
+/-- The coded capital: savings plus active, on codes. -/
+def savingsCodeCapital (p : Code) (s : ℕ) (σ : BitString) : ℕ :=
+  NNRatCode.add (savingsCodePair p s σ).2.1 (savingsCodePair p s σ).2.2
+
+theorem savingsCodePair_append (p : Code) (s : ℕ) (σ : BitString) (b : Bool) :
+    savingsCodePair p s (σ ++ [b]) = savingsCodeStep p s (savingsCodePair p s σ) b := by
+  rw [savingsCodePair, savingsCodePair, List.foldl_append, List.foldl_cons, List.foldl_nil]
+
+theorem foldl_savingsCodeStep_fst (p : Code) (s : ℕ) (σ : BitString) :
+    ∀ (τ : BitString) (q : ℕ × ℕ), (σ.foldl (savingsCodeStep p s) (τ, q)).1 = τ ++ σ := by
+  induction σ with
+  | nil => intro τ q; simp
+  | cons b σ ih => intro τ q; rw [List.foldl_cons, ih]; simp [savingsCodeStep]
+
+@[simp] theorem savingsCodePair_fst (p : Code) (s : ℕ) (σ : BitString) :
+    (savingsCodePair p s σ).1 = σ := by
+  rw [savingsCodePair, foldl_savingsCodeStep_fst, List.nil_append]
+
+/-! ## Correspondence
+
+One statement covering both accounts, proved by a single induction; the capital statement is a
+projection of it. The hypothesis is that the fuel suffices on every prefix involved, which the
+totality of the source program supplies. -/
+
+/-- The fuel `s` resolves the source program on every prefix of `σ` and its children. -/
+def FuelOk (E : NatFunctionCode) (s : ℕ) (σ : BitString) : Prop :=
+  ∀ τ, τ <+: σ → ∀ b : Bool,
+    evalD E.program s (Encodable.encode τ) = E.toFun (Encodable.encode τ) ∧
+    evalD E.program s (Encodable.encode (τ ++ [b])) = E.toFun (Encodable.encode (τ ++ [b]))
+
+theorem shiftedCode_value {E : NatFunctionCode} {s : ℕ} {σ : BitString}
+    (h : evalD E.program s (Encodable.encode σ) = E.toFun (Encodable.encode σ)) :
+    NNRatCode.value (shiftedCode E.program s σ)
+      = NNRatCode.value (E.toFun (Encodable.encode σ)) + 1 := by
+  rw [shiftedCode, NNRatCode.value_add, h, NNRatCode.value_ofNat]
+  norm_num
+
+theorem shiftedCode_pos {E : NatFunctionCode} {s : ℕ} {σ : BitString}
+    (h : evalD E.program s (Encodable.encode σ) = E.toFun (Encodable.encode σ)) :
+    0 < NNRatCode.value (shiftedCode E.program s σ) := by
+  rw [shiftedCode_value h]
+  positivity
+
+/-- The martingale a `ComputableMartingale` denotes, shifted to be positive. -/
+theorem shift_capital_eq (M : ComputableMartingale) (σ : BitString) :
+    M.toTreeMartingale.shift.capital σ
+      = NNRatCode.value (M.program.toFun (Encodable.encode σ)) + 1 := by
+  rw [TreeMartingale.shift_capital, M.eval_capital σ]
+
+/-- **The state correspondence**: the coded fold decodes to the semantic accounts. -/
+theorem savingsCodePair_value (M : ComputableMartingale) {s : ℕ} {σ : BitString}
+    (hfuel : FuelOk M.program s σ) :
+    NNRatCode.value (savingsCodePair M.program.program s σ).2.1
+        = savingsPart M.toTreeMartingale.shift σ ∧
+      NNRatCode.value (savingsCodePair M.program.program s σ).2.2
+        = activePart M.toTreeMartingale.shift σ := by
+  induction σ using List.reverseRecOn with
+  | nil =>
+    have hs : (savingsCodePair M.program.program s []).2.1 = NNRatCode.ofNat 0 := rfl
+    have ha : (savingsCodePair M.program.program s []).2.2
+        = NNRatCode.half (NNRatCode.ofNat 1) := rfl
+    refine ⟨?_, ?_⟩
+    · rw [hs, NNRatCode.value_ofNat, savingsPart_nil]
+      norm_num
+    · rw [ha, NNRatCode.value_half, NNRatCode.value_ofNat, activePart_nil]
+      norm_num
+  | append_singleton σ b ih =>
+    have hσ : FuelOk M.program s σ := fun τ hτ c ↦ hfuel τ (hτ.trans (List.prefix_append σ [b])) c
+    obtain ⟨ihs, iha⟩ := ih hσ
+    obtain ⟨hev, hevb⟩ := hσ σ (List.prefix_refl σ) b
+    -- the coded next-active decodes to the semantic one
+    have hden : 0 < NNRatCode.value (shiftedCode M.program.program s σ) := shiftedCode_pos hev
+    have hnext : NNRatCode.value (NNRatCode.mul (savingsCodePair M.program.program s σ).2.2
+        (NNRatCode.div (shiftedCode M.program.program s (σ ++ [b]))
+          (shiftedCode M.program.program s σ)))
+        = nextActive M.toTreeMartingale.shift σ b := by
+      rw [NNRatCode.value_mul, NNRatCode.value_div hden, iha, nextActive, bettingFactor,
+        shiftedCode_value hev, shiftedCode_value hevb, ← shift_capital_eq M,
+        ← shift_capital_eq M]
+    rw [savingsCodePair_append, savingsCodeStep, savingsCodePair_fst]
+    rw [savings_append, active_append]
+    by_cases hc : 1 < nextActive M.toTreeMartingale.shift σ b
+    · have hlt : NNRatCode.lt (NNRatCode.ofNat 1)
+          (NNRatCode.mul (savingsCodePair M.program.program s σ).2.2
+            (NNRatCode.div (shiftedCode M.program.program s (σ ++ [b]))
+              (shiftedCode M.program.program s σ))) = true := by
+        rw [NNRatCode.lt_iff, NNRatCode.value_ofNat, hnext]
+        exact_mod_cast hc
+      rw [if_pos hlt, if_pos hc, if_pos hc]
+      exact ⟨by rw [NNRatCode.value_add, NNRatCode.value_half, ihs, hnext],
+        by rw [NNRatCode.value_half, hnext]⟩
+    · have hlt : NNRatCode.lt (NNRatCode.ofNat 1)
+          (NNRatCode.mul (savingsCodePair M.program.program s σ).2.2
+            (NNRatCode.div (shiftedCode M.program.program s (σ ++ [b]))
+              (shiftedCode M.program.program s σ))) = false := by
+        rw [Bool.eq_false_iff, ne_eq, NNRatCode.lt_iff, NNRatCode.value_ofNat, hnext]
+        exact_mod_cast hc
+      rw [if_neg (by simp [hlt]), if_neg hc, if_neg hc]
+      exact ⟨ihs, hnext⟩
+
+/-- The capital statement, a projection of the state correspondence. -/
+theorem savingsCodeCapital_value (M : ComputableMartingale) {s : ℕ} {σ : BitString}
+    (hfuel : FuelOk M.program s σ) :
+    NNRatCode.value (savingsCodeCapital M.program.program s σ)
+      = savingsCapital M.toTreeMartingale.shift σ := by
+  obtain ⟨hs, ha⟩ := savingsCodePair_value M hfuel
+  rw [savingsCodeCapital, NNRatCode.value_add, hs, ha, savingsCapital]
 
 end AlgorithmicRandomness

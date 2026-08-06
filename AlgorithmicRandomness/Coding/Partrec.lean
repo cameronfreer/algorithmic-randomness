@@ -62,6 +62,15 @@ theorem primrec_isSome {α : Type*} [Primcodable α] :
     Primrec.option_getD.comp (Primrec.option_map₁ (Primrec.const true)) (Primrec.const false)
   exact h.of_eq fun o ↦ by cases o <;> rfl
 
+/-- Bounded evaluation with a default, so the value fold never carries an `Option`. -/
+def evalD (p : Code) (s n : ℕ) : ℕ := (Code.evaln s p n).getD 0
+
+theorem primrec_evalD : Primrec fun z : (Code × ℕ) × ℕ ↦ evalD z.1.1 z.1.2 z.2 :=
+  Primrec.option_getD.comp
+    (Code.primrec_evaln.comp
+      (((Primrec.snd.comp Primrec.fst).pair (Primrec.fst.comp Primrec.fst)).pair Primrec.snd))
+    (Primrec.const 0)
+
 /-- Natural exponentiation is primitive recursive. -/
 theorem primrec_natPow : Primrec₂ ((· ^ ·) : ℕ → ℕ → ℕ) :=
   Primrec₂.unpaired'.1 Nat.Primrec.pow
