@@ -543,4 +543,144 @@ theorem frequently_rawValue_eq_two (M : TreeMartingale) (hsav : M.SavingsPropert
     obtain ⟨m, hm, hval⟩ := exists_eq_two_of_down M hsav h hN
     exact ⟨m, le_of_lt hm, hval⟩
 
+/-! ## The coded oscillator
+
+The same recursion on codes, carrying a `RatCode` value and the phase bit. Signed arithmetic is
+internal; only the output is converted back, licensed by `rawValue_nonneg`. `PathFuelOk` covers
+every source evaluation the fold performs, and the coded rational operations are total, so no
+oscillator-specific convergence predicate is needed. -/
+
+open Nat.Partrec (Code)
+
+/-- The coded capital increment at `σ` on bit `b`. -/
+def codedIncrement (p : Code) (s : ℕ) (σ : BitString) (b : Bool) : ℕ :=
+  RatCode.sub (RatCode.ofNNRat (evalD p s (Encodable.encode (σ ++ [b]))))
+    (RatCode.ofNNRat (evalD p s (Encodable.encode σ)))
+
+/-- One coded step, mirroring `oscStep`. -/
+def oscCodeStep (p : Code) (s : ℕ) (q : BitString × ℕ × Bool) (b : Bool) : BitString × ℕ × Bool :=
+  if q.2.2 then
+    if RatCode.le (RatCode.ofNat 3) (RatCode.add q.2.1 (codedIncrement p s q.1 b)) then
+      (q.1 ++ [b], RatCode.ofNat 3, false)
+    else if RatCode.le (RatCode.ofNat 3) (RatCode.sub q.2.1 (codedIncrement p s q.1 b)) then
+      (q.1 ++ [b], RatCode.sub (RatCode.double q.2.1) (RatCode.ofNat 3), true)
+    else (q.1 ++ [b], RatCode.add q.2.1 (codedIncrement p s q.1 b), true)
+  else
+    if RatCode.le (RatCode.sub q.2.1 (codedIncrement p s q.1 b)) (RatCode.ofNat 2) then
+      (q.1 ++ [b], RatCode.ofNat 2, true)
+    else if RatCode.le (RatCode.add q.2.1 (codedIncrement p s q.1 b)) (RatCode.ofNat 2) then
+      (q.1 ++ [b], RatCode.sub (RatCode.double q.2.1) (RatCode.ofNat 2), false)
+    else (q.1 ++ [b], RatCode.sub q.2.1 (codedIncrement p s q.1 b), false)
+
+def oscCodePair (p : Code) (s : ℕ) (σ : BitString) : BitString × ℕ × Bool :=
+  σ.foldl (oscCodeStep p s) ([], (RatCode.ofNat 2, true))
+
+theorem oscCodeStep_fst (p : Code) (s : ℕ) (q : BitString × ℕ × Bool) (b : Bool) :
+    (oscCodeStep p s q b).1 = q.1 ++ [b] := by
+  rw [oscCodeStep]
+  split
+  · split
+    · rfl
+    · split <;> rfl
+  · split
+    · rfl
+    · split <;> rfl
+
+theorem foldl_oscCodeStep_fst (p : Code) (s : ℕ) (σ : BitString) :
+    ∀ (τ : BitString) (q : ℕ × Bool), (σ.foldl (oscCodeStep p s) (τ, q)).1 = τ ++ σ := by
+  induction σ with
+  | nil => intro τ q; simp
+  | cons b σ ih =>
+    intro τ q
+    rw [List.foldl_cons, ih, oscCodeStep_fst]
+    simp
+
+@[simp] theorem oscCodePair_fst (p : Code) (s : ℕ) (σ : BitString) :
+    (oscCodePair p s σ).1 = σ := by
+  rw [oscCodePair, foldl_oscCodeStep_fst, List.nil_append]
+
+theorem oscCodePair_append (p : Code) (s : ℕ) (σ : BitString) (b : Bool) :
+    oscCodePair p s (σ ++ [b]) = oscCodeStep p s (oscCodePair p s σ) b := by
+  rw [oscCodePair, oscCodePair, List.foldl_append, List.foldl_cons, List.foldl_nil]
+
+/-- The coded increment decodes to the semantic one. -/
+theorem value_codedIncrement (M : ComputableMartingale) {s : ℕ} {σ : BitString} {b : Bool}
+    (hσ : evalD M.program.program s (Encodable.encode σ)
+      = M.program.toFun (Encodable.encode σ))
+    (hσb : evalD M.program.program s (Encodable.encode (σ ++ [b]))
+      = M.program.toFun (Encodable.encode (σ ++ [b]))) :
+    RatCode.value (codedIncrement M.program.program s σ b)
+      = increment M.toTreeMartingale σ b := by
+  rw [codedIncrement, RatCode.value_sub, RatCode.value_ofNNRat, RatCode.value_ofNNRat,
+    hσ, hσb, M.eval_capital, M.eval_capital, increment, srcCapital, srcCapital]
+
+/-- **The acceptance theorem**: the coded fold decodes to the semantic value and phase. Both
+components together, so the branch analysis is done once. -/
+theorem oscCodePair_value (M : ComputableMartingale) {s : ℕ} {σ : BitString}
+    (hfuel : M.program.PathFuelOk s σ) :
+    RatCode.value (oscCodePair M.program.program s σ).2.1 = rawValue M.toTreeMartingale σ ∧
+      (oscCodePair M.program.program s σ).2.2 = phase M.toTreeMartingale σ := by
+  induction σ using List.reverseRecOn with
+  | nil =>
+    have hv : (oscCodePair M.program.program s []).2.1 = RatCode.ofNat 2 := rfl
+    have hp : (oscCodePair M.program.program s []).2.2 = true := rfl
+    refine ⟨?_, ?_⟩
+    · rw [hv, RatCode.value_ofNat, rawValue_nil]; norm_num
+    · rw [hp, phase_nil]
+  | append_singleton σ b ih =>
+    have hσ : M.program.PathFuelOk s σ :=
+      fun τ hτ ↦ hfuel τ (hτ.trans (List.prefix_append σ [b]))
+    obtain ⟨ihv, ihp⟩ := ih hσ
+    have hev := hfuel σ (List.prefix_append σ [b])
+    have hevb := hfuel (σ ++ [b]) (List.prefix_refl _)
+    have hinc := value_codedIncrement M hev hevb
+    -- the two candidate values decode to the semantic ones
+    have hup : RatCode.value (RatCode.add (oscCodePair M.program.program s σ).2.1
+        (codedIncrement M.program.program s σ b))
+        = rawValue M.toTreeMartingale σ + increment M.toTreeMartingale σ b := by
+      rw [RatCode.value_add, ihv, hinc]
+    have hdn : RatCode.value (RatCode.sub (oscCodePair M.program.program s σ).2.1
+        (codedIncrement M.program.program s σ b))
+        = rawValue M.toTreeMartingale σ - increment M.toTreeMartingale σ b := by
+      rw [RatCode.value_sub, ihv, hinc]
+    have h2v : ∀ c : ℕ, RatCode.value (RatCode.sub
+        (RatCode.double (oscCodePair M.program.program s σ).2.1) (RatCode.ofNat c))
+        = 2 * rawValue M.toTreeMartingale σ - (c : ℚ) := by
+      intro c
+      rw [RatCode.value_sub, RatCode.value_double, RatCode.value_ofNat, ihv]
+    rw [oscCodePair_append, oscCodeStep, oscCodePair_fst, rawValue_append, phase_append, ihp]
+    by_cases hph : phase M.toTreeMartingale σ = true
+    · rw [if_pos hph, if_pos hph, if_pos hph]
+      by_cases h1 : (3 : ℚ) ≤ rawValue M.toTreeMartingale σ + increment M.toTreeMartingale σ b
+      · rw [if_pos (by rw [RatCode.le_iff, RatCode.value_ofNat, hup]; exact_mod_cast h1),
+          if_pos h1, if_pos h1]
+        exact ⟨by rw [RatCode.value_ofNat]; norm_num, rfl⟩
+      · rw [if_neg (by rw [Bool.not_eq_true, Bool.eq_false_iff, ne_eq, RatCode.le_iff,
+              RatCode.value_ofNat, hup]; exact_mod_cast h1),
+          if_neg h1, if_neg h1]
+        by_cases h2 : (3 : ℚ) ≤ rawValue M.toTreeMartingale σ - increment M.toTreeMartingale σ b
+        · rw [if_pos (by rw [RatCode.le_iff, RatCode.value_ofNat, hdn]; exact_mod_cast h2),
+            if_pos h2]
+          exact ⟨by rw [h2v]; norm_num, rfl⟩
+        · rw [if_neg (by rw [Bool.not_eq_true, Bool.eq_false_iff, ne_eq, RatCode.le_iff,
+                RatCode.value_ofNat, hdn]; exact_mod_cast h2), if_neg h2]
+          exact ⟨hup, rfl⟩
+    · rw [Bool.not_eq_true] at hph
+      have hnot : ¬(phase M.toTreeMartingale σ = true) := by simp [hph]
+      rw [if_neg hnot, if_neg hnot, if_neg hnot]
+      by_cases h1 : rawValue M.toTreeMartingale σ - increment M.toTreeMartingale σ b ≤ (2 : ℚ)
+      · rw [if_pos (by rw [RatCode.le_iff, RatCode.value_ofNat, hdn]; exact_mod_cast h1),
+          if_pos h1, if_pos h1]
+        exact ⟨by rw [RatCode.value_ofNat]; norm_num, rfl⟩
+      · rw [if_neg (by rw [Bool.not_eq_true, Bool.eq_false_iff, ne_eq, RatCode.le_iff,
+              RatCode.value_ofNat, hdn]; exact_mod_cast h1),
+          if_neg h1, if_neg h1]
+        by_cases h2 : rawValue M.toTreeMartingale σ + increment M.toTreeMartingale σ b ≤ (2 : ℚ)
+        · rw [if_pos (by rw [RatCode.le_iff, RatCode.value_ofNat, hup]; exact_mod_cast h2),
+            if_pos h2]
+          exact ⟨by rw [h2v]; norm_num, rfl⟩
+        · rw [if_neg (by rw [Bool.not_eq_true, Bool.eq_false_iff, ne_eq, RatCode.le_iff,
+                RatCode.value_ofNat, hup]; exact_mod_cast h2), if_neg h2]
+          exact ⟨hdn, rfl⟩
+
 end AlgorithmicRandomness

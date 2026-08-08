@@ -205,6 +205,13 @@ theorem primrec_add : Primrec₂ add :=
 
 theorem primrec_sub : Primrec₂ sub := primrec_add.comp Primrec.fst (primrec_neg.comp Primrec.snd)
 
+theorem primrec_double : Primrec double :=
+  Primrec₂.natPair.comp (NNRatCode.primrec_double.comp (Primrec.fst.comp Primrec.unpair))
+    (NNRatCode.primrec_double.comp (Primrec.snd.comp Primrec.unpair))
+
+theorem primrec_ofNat : Primrec ofNat :=
+  primrec_ofNNRat.comp (Primrec₂.natPair.comp Primrec.id (Primrec.const 0))
+
 theorem primrec_half : Primrec half :=
   Primrec₂.natPair.comp (NNRatCode.primrec_half.comp (Primrec.fst.comp Primrec.unpair))
     (NNRatCode.primrec_half.comp (Primrec.snd.comp Primrec.unpair))
