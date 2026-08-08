@@ -683,4 +683,205 @@ theorem oscCodePair_value (M : ComputableMartingale) {s : ℕ} {σ : BitString}
                 RatCode.value_ofNat, hup]; exact_mod_cast h2), if_neg h2]
           exact ⟨hdn, rfl⟩
 
+/-! ## The packaged oscillator
+
+The semantic capital is built directly from `rawValue`, so the coding representation stays
+behind `eval_capital` and later slope arguments never see it. -/
+
+/-- The oscillator's capital: the raw value, known nonnegative. -/
+def oscillatorCapital (M : SavingsComputableMartingale) (σ : BitString) : ℚ≥0 :=
+  ⟨rawValue M.toTreeMartingale σ, rawValue_nonneg M.toTreeMartingale M.savingsProperty σ⟩
+
+@[simp, norm_cast] theorem coe_oscillatorCapital (M : SavingsComputableMartingale)
+    (σ : BitString) : ((oscillatorCapital M σ : ℚ≥0) : ℚ) = rawValue M.toTreeMartingale σ := rfl
+
+theorem oscillatorCapital_fair (M : SavingsComputableMartingale) (σ : BitString) :
+    oscillatorCapital M (σ ++ [false]) + oscillatorCapital M (σ ++ [true])
+      = 2 * oscillatorCapital M σ := by
+  have h := rawValue_fair M.toTreeMartingale σ
+  rw [← NNRat.coe_inj]
+  push_cast [coe_oscillatorCapital]
+  exact h
+
+/-- The semantic oscillating martingale. -/
+def oscillatorTree (M : SavingsComputableMartingale) : TreeMartingale where
+  capital := oscillatorCapital M
+  fair := oscillatorCapital_fair M
+
+/-! ## The program -/
+
+-- The coded arithmetic unfolds into `Nat.unpair` and hence `Nat.sqrt`, which makes elaboration
+-- explode during `Primrec` composition.
+attribute [local irreducible] RatCode.add RatCode.sub RatCode.double RatCode.ofNat
+  RatCode.ofNNRat RatCode.le RatCode.toNNRat
+
+private theorem primrec_codedIncrement :
+    Primrec fun z : ((Code × ℕ) × BitString) × Bool ↦
+      codedIncrement z.1.1.1 z.1.1.2 z.1.2 z.2 := by
+  have harg : ∀ c : Bool, Primrec fun v : ((Code × ℕ) × BitString) × Bool ↦
+      evalD v.1.1.1 v.1.1.2 (Encodable.encode (v.1.2 ++ [c])) := fun c ↦
+    primrec_evalD.comp
+      (((Primrec.fst.comp (Primrec.fst.comp Primrec.fst)).pair
+        (Primrec.snd.comp (Primrec.fst.comp Primrec.fst))).pair
+        (Primrec.encode.comp (Primrec.list_append.comp
+          (Primrec.snd.comp Primrec.fst) (Primrec.const [c]))))
+  have hbit : Primrec fun v : ((Code × ℕ) × BitString) × Bool ↦
+      evalD v.1.1.1 v.1.1.2 (Encodable.encode (v.1.2 ++ [v.2])) :=
+    primrec_evalD.comp
+      (((Primrec.fst.comp (Primrec.fst.comp Primrec.fst)).pair
+        (Primrec.snd.comp (Primrec.fst.comp Primrec.fst))).pair
+        (Primrec.encode.comp (Primrec.list_append.comp
+          (Primrec.snd.comp Primrec.fst)
+          (Primrec.list_cons.comp Primrec.snd (Primrec.const [])))))
+  have hpar : Primrec fun v : ((Code × ℕ) × BitString) × Bool ↦
+      evalD v.1.1.1 v.1.1.2 (Encodable.encode v.1.2) :=
+    primrec_evalD.comp
+      (((Primrec.fst.comp (Primrec.fst.comp Primrec.fst)).pair
+        (Primrec.snd.comp (Primrec.fst.comp Primrec.fst))).pair
+        (Primrec.encode.comp (Primrec.snd.comp Primrec.fst)))
+  exact RatCode.primrec_sub.comp (RatCode.primrec_ofNNRat.comp hbit)
+    (RatCode.primrec_ofNNRat.comp hpar)
+
+private theorem primrec_oscCodePair :
+    Primrec fun z : (Code × ℕ) × BitString ↦ oscCodePair z.1.1 z.1.2 z.2 := by
+  have hstep : Primrec₂ fun (z : (Code × ℕ) × BitString) (q : (BitString × ℕ × Bool) × Bool) ↦
+      oscCodeStep z.1.1 z.1.2 q.1 q.2 := by
+    unfold oscCodeStep
+    have hpref : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × Bool) × Bool) ↦
+        v.2.1.1 ++ [v.2.2] :=
+      Primrec.list_append.comp (Primrec.fst.comp (Primrec.fst.comp Primrec.snd))
+        (Primrec.list_cons.comp (Primrec.snd.comp Primrec.snd) (Primrec.const []))
+    have hval : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × Bool) × Bool) ↦
+        v.2.1.2.1 := Primrec.fst.comp (Primrec.snd.comp (Primrec.fst.comp Primrec.snd))
+    have hinc : Primrec fun v : ((Code × ℕ) × BitString) × ((BitString × ℕ × Bool) × Bool) ↦
+        codedIncrement v.1.1.1 v.1.1.2 v.2.1.1 v.2.2 :=
+      primrec_codedIncrement.comp
+        ((((Primrec.fst.comp (Primrec.fst.comp Primrec.fst)).pair
+          (Primrec.snd.comp (Primrec.fst.comp Primrec.fst))).pair
+          (Primrec.fst.comp (Primrec.fst.comp Primrec.snd))).pair
+          (Primrec.snd.comp Primrec.snd))
+    have hadd := RatCode.primrec_add.comp hval hinc
+    have hsub := RatCode.primrec_sub.comp hval hinc
+    have hdbl3 := RatCode.primrec_sub.comp (RatCode.primrec_double.comp hval)
+      (Primrec.const (RatCode.ofNat 3))
+    have hdbl2 := RatCode.primrec_sub.comp (RatCode.primrec_double.comp hval)
+      (Primrec.const (RatCode.ofNat 2))
+    refine Primrec.ite (Primrec.eq.comp
+      (Primrec.snd.comp (Primrec.snd.comp (Primrec.fst.comp Primrec.snd))) (Primrec.const true))
+      ?_ ?_
+    · refine Primrec.ite (Primrec.eq.comp
+        (RatCode.primrec_le.comp (Primrec.const (RatCode.ofNat 3)) hadd) (Primrec.const true))
+        (Primrec₂.pair.comp hpref (Primrec₂.pair.comp (Primrec.const (RatCode.ofNat 3))
+          (Primrec.const false))) ?_
+      refine Primrec.ite (Primrec.eq.comp
+        (RatCode.primrec_le.comp (Primrec.const (RatCode.ofNat 3)) hsub) (Primrec.const true))
+        (Primrec₂.pair.comp hpref (Primrec₂.pair.comp hdbl3 (Primrec.const true)))
+        (Primrec₂.pair.comp hpref (Primrec₂.pair.comp hadd (Primrec.const true)))
+    · refine Primrec.ite (Primrec.eq.comp
+        (RatCode.primrec_le.comp hsub (Primrec.const (RatCode.ofNat 2))) (Primrec.const true))
+        (Primrec₂.pair.comp hpref (Primrec₂.pair.comp (Primrec.const (RatCode.ofNat 2))
+          (Primrec.const true))) ?_
+      refine Primrec.ite (Primrec.eq.comp
+        (RatCode.primrec_le.comp hadd (Primrec.const (RatCode.ofNat 2))) (Primrec.const true))
+        (Primrec₂.pair.comp hpref (Primrec₂.pair.comp hdbl2 (Primrec.const false)))
+        (Primrec₂.pair.comp hpref (Primrec₂.pair.comp hsub (Primrec.const false)))
+  unfold oscCodePair
+  refine Primrec.list_foldl Primrec.snd ?_ hstep
+  exact Primrec₂.pair.comp (Primrec.const [])
+    (Primrec₂.pair.comp (Primrec.const (RatCode.ofNat 2)) (Primrec.const true))
+
+/-- On input `encode σ`, the coded capital of the oscillator at `σ`. -/
+def oscillatorEnum (p : Code) : ℕ →. ℕ := fun input ↦
+  (Nat.rfind fun s ↦ Part.some
+      (pathFuelOk p s ((Encodable.decode input : Option BitString).getD []))).map
+    fun s ↦ RatCode.toNNRat
+      (oscCodePair p s ((Encodable.decode input : Option BitString).getD [])).2.1
+
+/-- Uniform in the raw source program. -/
+theorem partrec_oscillatorEnumUniform :
+    Partrec fun z : Code × ℕ ↦ oscillatorEnum z.1 z.2 := by
+  have hstr : Primrec fun z : Code × ℕ ↦ (Encodable.decode z.2 : Option BitString).getD [] :=
+    Primrec.option_getD.comp (Primrec.decode.comp Primrec.snd) (Primrec.const [])
+  have harg : Primrec fun q : (Code × ℕ) × ℕ ↦
+      (((q.1.1, q.2), (Encodable.decode q.1.2 : Option BitString).getD [])
+        : (Code × ℕ) × BitString) :=
+    ((Primrec.fst.comp Primrec.fst).pair Primrec.snd).pair (hstr.comp Primrec.fst)
+  exact Partrec.map
+    (Partrec.rfind (Computable₂.partrec₂ (primrec_pathFuelOk.comp harg).to_comp.to₂))
+    ((RatCode.primrec_toNNRat.comp
+      (Primrec.fst.comp (Primrec.snd.comp (primrec_oscCodePair.comp harg)))).to_comp.to₂)
+
+theorem partrec_oscillatorEnum (p : Code) : Nat.Partrec (oscillatorEnum p) :=
+  Partrec.nat_iff.mp ((partrec_oscillatorEnumUniform.comp
+    (Computable.pair (Computable.const p) Computable.id)).of_eq fun _ ↦ rfl)
+
+namespace SavingsComputableMartingale
+
+variable (M : SavingsComputableMartingale)
+
+theorem oscillatorEnum_dom (input : ℕ) :
+    (oscillatorEnum M.program.program input).Dom := by
+  obtain ⟨s, hs⟩ :=
+    exists_pathFuelOk M.program ((Encodable.decode input : Option BitString).getD [])
+  obtain ⟨t, htmem, -⟩ := Nat.rfind_min'
+    (p := fun s ↦ pathFuelOk M.program.program s
+      ((Encodable.decode input : Option BitString).getD [])) (m := s) hs
+  exact Part.dom_iff_mem.mpr ⟨_, Part.mem_map _ htmem⟩
+
+/-- The program computing the oscillator's capital. -/
+noncomputable def oscillatorCode : NatFunctionCode :=
+  NatFunctionCode.ofPartrecTotal (partrec_oscillatorEnum M.program.program) M.oscillatorEnum_dom
+
+theorem oscillatorCode_value (σ : BitString) :
+    NNRatCode.value (M.oscillatorCode.toFun (Encodable.encode σ)) = oscillatorCapital M σ := by
+  have hmem : M.oscillatorCode.toFun (Encodable.encode σ)
+      ∈ oscillatorEnum M.program.program (Encodable.encode σ) := by
+    rw [oscillatorCode, NatFunctionCode.ofPartrecTotal_toFun]
+    exact Part.get_mem _
+  rw [oscillatorEnum, Encodable.encodek, Option.getD_some, Part.mem_map_iff] at hmem
+  obtain ⟨s, hs, hval⟩ := hmem
+  have hok : pathFuelOk M.program.program s σ = true := by
+    have := Nat.rfind_spec hs; simpa using this
+  obtain ⟨hv, -⟩ := oscCodePair_value M.toComputableMartingale (pathFuelOk_spec hok)
+  rw [← NNRat.coe_inj, coe_oscillatorCapital, ← hval,
+    RatCode.value_toNNRat (by rw [hv]; exact rawValue_nonneg _ M.savingsProperty σ), hv]
+
+/-- **The bounded oscillating martingale of a source with the savings property.** -/
+noncomputable def oscillator : ComputableMartingale where
+  toTreeMartingale := oscillatorTree M
+  program := M.oscillatorCode
+  eval_capital := M.oscillatorCode_value
+
+@[simp] theorem oscillator_capital (σ : BitString) :
+    M.oscillator.capital σ = oscillatorCapital M σ := rfl
+
+theorem oscillator_bounds (σ : BitString) :
+    1 ≤ M.oscillator.capital σ ∧ M.oscillator.capital σ ≤ 4 := by
+  have h := rawValue_mem_Icc M.toTreeMartingale M.savingsProperty σ
+  rw [oscillator_capital]
+  constructor
+  · rw [← NNRat.coe_le_coe]; exact_mod_cast h.1
+  · rw [← NNRat.coe_le_coe]; exact_mod_cast h.2
+
+variable {M}
+
+/-- The oscillator reaches exactly `3` arbitrarily late along any path where the source
+succeeds. -/
+theorem frequently_oscillator_capital_eq_three {x : Cantor}
+    (h : M.toTreeMartingale.Succeeds x) :
+    ∃ᶠ n in Filter.atTop, M.oscillator.capital (initSeg x n) = 3 := by
+  refine (frequently_rawValue_eq_three M.toTreeMartingale M.savingsProperty h).mono fun n hn ↦ ?_
+  rw [oscillator_capital, ← NNRat.coe_inj, coe_oscillatorCapital, hn]
+  norm_num
+
+/-- And exactly `2` arbitrarily late. -/
+theorem frequently_oscillator_capital_eq_two {x : Cantor}
+    (h : M.toTreeMartingale.Succeeds x) :
+    ∃ᶠ n in Filter.atTop, M.oscillator.capital (initSeg x n) = 2 := by
+  refine (frequently_rawValue_eq_two M.toTreeMartingale M.savingsProperty h).mono fun n hn ↦ ?_
+  rw [oscillator_capital, ← NNRat.coe_inj, coe_oscillatorCapital, hn]
+  norm_num
+
+end SavingsComputableMartingale
+
 end AlgorithmicRandomness
