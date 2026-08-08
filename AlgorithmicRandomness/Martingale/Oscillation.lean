@@ -443,4 +443,104 @@ theorem down_run_le (M : TreeMartingale) (x : Cantor) {n m : ℕ} (hnm : n ≤ m
     rw [initSeg_succ] at *
     linarith [ih hres]
 
+/-! ## Oscillation
+
+Success rules out an indefinitely constant phase, because a run inequality bounds the source's
+gain over any constant-phase interval while success makes that gain unbounded. Locating an
+adjacent phase change then pins the value to `3` or `2` exactly. -/
+
+/-- A Boolean sequence differing at two indices changes somewhere adjacent between them, and the
+first such change still agrees with the left endpoint. -/
+private theorem exists_adjacent_ne_of_ne (p : ℕ → Bool) {n m : ℕ} (hnm : n ≤ m)
+    (hne : p n ≠ p m) : ∃ k, n ≤ k ∧ k < m ∧ p k = p n ∧ p (k + 1) ≠ p n := by
+  induction m, hnm using Nat.le_induction with
+  | base => exact absurd rfl hne
+  | succ m hm ih =>
+    by_cases hpm : p n = p m
+    · exact ⟨m, hm, Nat.lt_succ_self m, hpm.symm, fun h ↦ hne h.symm⟩
+    · obtain ⟨k, hk1, hk2, hk3, hk4⟩ := ih hpm
+      exact ⟨k, hk1, hk2.trans (Nat.lt_succ_self m), hk3, hk4⟩
+
+/-- Success forces a phase change after any index. A constant-phase run bounds the source's
+gain by a run inequality, while success makes that gain exceed the bound. -/
+theorem exists_phase_switch (M : TreeMartingale) (hsav : M.SavingsProperty) {x : Cantor}
+    (h : M.Succeeds x) (n : ℕ) :
+    ∃ k, n ≤ k ∧ phase M (initSeg x k) = phase M (initSeg x n) ∧
+      phase M (initSeg x (k + 1)) ≠ phase M (initSeg x n) := by
+  obtain ⟨m, hm, hcap⟩ := Filter.frequently_atTop.mp
+    (h.frequently_ge (M.capital (initSeg x n) + 4)) n
+  have hcapQ : srcCapital M (initSeg x n) + 4 ≤ srcCapital M (initSeg x m) := by
+    rw [srcCapital, srcCapital]
+    exact_mod_cast hcap
+  -- the phase cannot be constant on `[n, m]`: either run inequality caps the gain at `2`
+  have hnotconst : ¬∀ k, n ≤ k → k ≤ m → phase M (initSeg x k) = phase M (initSeg x n) := by
+    intro hconst
+    by_cases hnv : phase M (initSeg x n) = true
+    · have hrun := up_run_le M x hm fun k h1 h2 ↦ (hconst k h1 h2).trans hnv
+      have h1 := (rawValue_bounds_of_up M hsav hnv).1
+      have h2 := (rawValue_bounds_of_up M hsav
+        ((hconst m hm (le_refl m)).trans hnv)).2
+      linarith
+    · rw [Bool.not_eq_true] at hnv
+      have hrun := down_run_le M x hm fun k h1 h2 ↦ (hconst k h1 h2).trans hnv
+      have h1 := (rawValue_bounds_of_down M hsav
+        ((hconst m hm (le_refl m)).trans hnv)).1
+      have h2 := (rawValue_bounds_of_down M hsav hnv).2
+      linarith
+  push Not at hnotconst
+  obtain ⟨k, hk1, -, hkne⟩ := hnotconst
+  obtain ⟨j, hj1, -, hj3, hj4⟩ :=
+    exists_adjacent_ne_of_ne (fun i ↦ phase M (initSeg x i)) hk1 (Ne.symm hkne)
+  exact ⟨j, hj1, hj3, hj4⟩
+
+/-- From an up-phase index, the next switch lands on exactly `3`. -/
+theorem exists_eq_three_of_up (M : TreeMartingale) (hsav : M.SavingsProperty) {x : Cantor}
+    (h : M.Succeeds x) {n : ℕ} (hn : phase M (initSeg x n) = true) :
+    ∃ m, n < m ∧ rawValue M (initSeg x m) = 3 := by
+  obtain ⟨k, hk, hkeq, hkne⟩ := exists_phase_switch M hsav h n
+  have hkt : phase M (initSeg x k) = true := hkeq.trans hn
+  have hkf : phase M (initSeg x (k + 1)) = false := by rw [hn] at hkne; simpa using hkne
+  refine ⟨k + 1, by omega, ?_⟩
+  rw [initSeg_succ]
+  exact rawValue_eq_three_of_switch M hkt (by rw [← initSeg_succ]; exact hkf)
+
+/-- From a down-phase index, the next switch lands on exactly `2`. -/
+theorem exists_eq_two_of_down (M : TreeMartingale) (hsav : M.SavingsProperty) {x : Cantor}
+    (h : M.Succeeds x) {n : ℕ} (hn : phase M (initSeg x n) = false) :
+    ∃ m, n < m ∧ rawValue M (initSeg x m) = 2 := by
+  obtain ⟨k, hk, hkeq, hkne⟩ := exists_phase_switch M hsav h n
+  have hkf : phase M (initSeg x k) = false := hkeq.trans hn
+  have hkt : phase M (initSeg x (k + 1)) = true := by rw [hn] at hkne; simpa using hkne
+  refine ⟨k + 1, by omega, ?_⟩
+  rw [initSeg_succ]
+  exact rawValue_eq_two_of_switch M hkf (by rw [← initSeg_succ]; exact hkt)
+
+/-- **The oscillator visits `3` arbitrarily late.** -/
+theorem frequently_rawValue_eq_three (M : TreeMartingale) (hsav : M.SavingsProperty)
+    {x : Cantor} (h : M.Succeeds x) :
+    ∃ᶠ n in Filter.atTop, rawValue M (initSeg x n) = 3 := by
+  refine Filter.frequently_atTop.2 fun N ↦ ?_
+  by_cases hN : phase M (initSeg x N) = true
+  · obtain ⟨m, hm, hval⟩ := exists_eq_three_of_up M hsav h hN
+    exact ⟨m, le_of_lt hm, hval⟩
+  · rw [Bool.not_eq_true] at hN
+    obtain ⟨k, hk, hkeq, hkne⟩ := exists_phase_switch M hsav h N
+    have hkt : phase M (initSeg x (k + 1)) = true := by rw [hN] at hkne; simpa using hkne
+    obtain ⟨m, hm, hval⟩ := exists_eq_three_of_up M hsav h hkt
+    exact ⟨m, by omega, hval⟩
+
+/-- **The oscillator visits `2` arbitrarily late.** -/
+theorem frequently_rawValue_eq_two (M : TreeMartingale) (hsav : M.SavingsProperty)
+    {x : Cantor} (h : M.Succeeds x) :
+    ∃ᶠ n in Filter.atTop, rawValue M (initSeg x n) = 2 := by
+  refine Filter.frequently_atTop.2 fun N ↦ ?_
+  by_cases hN : phase M (initSeg x N) = true
+  · obtain ⟨k, hk, hkeq, hkne⟩ := exists_phase_switch M hsav h N
+    have hkf : phase M (initSeg x (k + 1)) = false := by rw [hN] at hkne; simpa using hkne
+    obtain ⟨m, hm, hval⟩ := exists_eq_two_of_down M hsav h hkf
+    exact ⟨m, by omega, hval⟩
+  · rw [Bool.not_eq_true] at hN
+    obtain ⟨m, hm, hval⟩ := exists_eq_two_of_down M hsav h hN
+    exact ⟨m, le_of_lt hm, hval⟩
+
 end AlgorithmicRandomness
