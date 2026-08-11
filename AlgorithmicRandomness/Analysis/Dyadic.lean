@@ -14,8 +14,15 @@ dyadic points rather than by first constructing a measure. The measure-theoretic
 separate concern and is deliberately not built here.
 
 The acceptance checkpoint for this layer is threefold: the endpoint domain covers both `0` and
-`1`; the values do not depend on which finite binary representation of a dyadic point is used;
-and the chord slope across `[σ]` is *exactly* the martingale's capital at `σ`.
+`1`; the endpoint values are *coherent* — refining an interval moves neither endpoint nor its
+value, and the two children meet at a shared point with a shared value; and the chord slope
+across `[σ]` is *exactly* the martingale's capital at `σ`.
+
+Coherence is not yet the same as global well-definedness of a function on dyadic points. That
+statement — equal dyadic points get equal values however they are named — additionally needs
+uniqueness of the finite binary representation, and is left to the dense-extension step, where
+working at a fixed level (on which `dyadicLeft` is injective, there being no trailing-zero
+ambiguity) is the natural route.
 
 Half-open cells are what partition, and closed intervals are what chords are taken across; both
 are provided, since the two roles are genuinely different and conflating them fails at points
@@ -149,6 +156,21 @@ theorem cdfRight_append_true (M : TreeMartingale) (σ : BitString) :
       = 2 * ((M.capital σ : ℚ≥0) : ℝ) := by exact_mod_cast M.fair σ
   rw [cdfRight, cdfRight, cdfLeft_append, if_pos rfl, dyadicWidth_append, dyadicWidth_append]
   linear_combination (dyadicWidth σ / 2) * hfair
+
+/-- **Cross-boundary coherence, endpoints**: the right end of the left child is the left end of
+the right child. Together with the refinement lemmas this is what makes the endpoint value
+depend only on the point, not on the string naming it. -/
+theorem dyadicRight_append_false_eq_left_append_true (σ : BitString) :
+    dyadicRight (σ ++ [false]) = dyadicLeft (σ ++ [true]) := by
+  rw [dyadicRight, dyadicLeft_append, dyadicLeft_append, dyadicWidth_append]
+  simp only [Bool.false_eq_true, if_false, if_true]
+  ring
+
+/-- **Cross-boundary coherence, values**: and the cumulative function agrees there. -/
+theorem cdfRight_append_false_eq_cdfLeft_append_true (M : TreeMartingale) (σ : BitString) :
+    cdfRight M (σ ++ [false]) = cdfLeft M (σ ++ [true]) := by
+  rw [cdfRight, cdfLeft_append, cdfLeft_append, if_pos rfl]
+  simp only [Bool.false_eq_true, if_false]
 
 /-- **The chord slope across `[σ]` is exactly the capital at `σ`.** -/
 theorem cdf_slope (M : TreeMartingale) (σ : BitString) :
