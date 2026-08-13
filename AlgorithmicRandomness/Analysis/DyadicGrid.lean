@@ -394,4 +394,82 @@ theorem cdfRight_eq_gridCDF (M : TreeMartingale) (σ : BitString) :
   push_cast
   ring
 
+/-! ## Iterated refinement and global coherence
+
+Single-step refinement iterates, so any two levels can be compared at a common one. Since a cut
+point determines its index at a fixed level, this makes the cumulative value depend only on the
+*point* — not on the level or the index used to name it. That is the statement the dense
+extension needs, and it is where the choice of cut points over cells pays off: the comparison is
+between natural numbers, not between binary strings up to trailing zeros. -/
+
+/-- Refining by `m` levels scales the index by `2 ^ m`. -/
+theorem gridPoint_refine_add (n m k : ℕ) : gridPoint (n + m) (2 ^ m * k) = gridPoint n k := by
+  induction m with
+  | zero => simp
+  | succ m ih =>
+    rw [show 2 ^ (m + 1) * k = 2 * (2 ^ m * k) by ring, show n + (m + 1) = n + m + 1 from rfl,
+      gridPoint_refine, ih]
+
+theorem gridCDF_refine_add (M : TreeMartingale) (n m k : ℕ) :
+    gridCDF M (n + m) (2 ^ m * k) = gridCDF M n k := by
+  induction m with
+  | zero => simp
+  | succ m ih =>
+    rw [show 2 ^ (m + 1) * k = 2 * (2 ^ m * k) by ring, show n + (m + 1) = n + m + 1 from rfl,
+      gridCDF_refine, ih]
+
+/-- The same, indexed by the target level — the form the common-level argument uses. -/
+theorem gridPoint_refine_of_le {n m : ℕ} (h : n ≤ m) (k : ℕ) :
+    gridPoint m (2 ^ (m - n) * k) = gridPoint n k := by
+  obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le h
+  rw [Nat.add_sub_cancel_left]
+  exact gridPoint_refine_add n d k
+
+theorem gridCDF_refine_of_le (M : TreeMartingale) {n m : ℕ} (h : n ≤ m) (k : ℕ) :
+    gridCDF M m (2 ^ (m - n) * k) = gridCDF M n k := by
+  obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le h
+  rw [Nat.add_sub_cancel_left]
+  exact gridCDF_refine_add M n d k
+
+/-- At a fixed level the cut point determines the index. -/
+theorem gridPoint_inj {n k l : ℕ} (h : gridPoint n k = gridPoint n l) : k = l := by
+  have h2 : (2 : ℝ) ^ n ≠ 0 := by positivity
+  rw [gridPoint, gridPoint, div_eq_div_iff h2 h2] at h
+  exact_mod_cast mul_right_cancel₀ h2 h
+
+/-- **Global coherence**: equal cut points carry equal values, whatever level and index name
+them. No bound on the indices is needed — single-step refinement holds at every index, so the
+argument is simply "refine the coarser level to the finer one and compare integers". -/
+theorem gridCDF_eq_of_gridPoint_eq (M : TreeMartingale) {n m k l : ℕ}
+    (h : gridPoint n k = gridPoint m l) : gridCDF M n k = gridCDF M m l := by
+  rcases le_total n m with hnm | hmn
+  · have hk : gridPoint m (2 ^ (m - n) * k) = gridPoint m l := by
+      rw [gridPoint_refine_of_le hnm]; exact h
+    rw [← gridCDF_refine_of_le M hnm k, gridPoint_inj hk]
+  · symm
+    have hl : gridPoint n (2 ^ (n - m) * l) = gridPoint n k := by
+      rw [gridPoint_refine_of_le hmn]; exact h.symm
+    rw [← gridCDF_refine_of_le M hmn l, gridPoint_inj hl]
+
+/-- The bounded restatement, for callers that carry unit-interval indices anyway. -/
+theorem gridCDF_eq_of_gridPoint_eq_of_le (M : TreeMartingale) {n m k l : ℕ}
+    (_hk : k ≤ 2 ^ n) (_hl : l ≤ 2 ^ m) (h : gridPoint n k = gridPoint m l) :
+    gridCDF M n k = gridCDF M m l :=
+  gridCDF_eq_of_gridPoint_eq M h
+
+/-! ## Cut points as points of the unit interval -/
+
+theorem gridPoint_mem_unit {n k : ℕ} (hk : k ≤ 2 ^ n) : gridPoint n k ∈ Set.Icc (0 : ℝ) 1 := by
+  refine ⟨by rw [gridPoint]; positivity, ?_⟩
+  rw [gridPoint, div_le_one (by positivity)]
+  exact_mod_cast hk
+
+/-- A cut point of the unit grid, as an element of `Icc 0 1`. This is the domain on which the
+cumulative function is genuinely defined; everything outside is a matter of extension. -/
+noncomputable def unitGridPoint (n k : ℕ) (hk : k ≤ 2 ^ n) : Set.Icc (0 : ℝ) 1 :=
+  ⟨gridPoint n k, gridPoint_mem_unit hk⟩
+
+@[simp] theorem unitGridPoint_coe (n k : ℕ) (hk : k ≤ 2 ^ n) :
+    ((unitGridPoint n k hk : Set.Icc (0 : ℝ) 1) : ℝ) = gridPoint n k := rfl
+
 end AlgorithmicRandomness

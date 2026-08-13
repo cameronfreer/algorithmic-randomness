@@ -29,3 +29,4 @@ import AlgorithmicRandomness.Martingale.Savings
 import AlgorithmicRandomness.Martingale.Oscillation
 import AlgorithmicRandomness.Analysis.Dyadic
 import AlgorithmicRandomness.Analysis.DyadicGrid
+import AlgorithmicRandomness.Analysis.Lipschitz
