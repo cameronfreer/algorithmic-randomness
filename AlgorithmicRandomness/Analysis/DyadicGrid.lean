@@ -210,4 +210,188 @@ theorem gridCDF_increment_bounds (M : TreeMartingale) {c K : ℚ≥0} (n : ℕ)
   · calc S.sum ≤ ((l - k : ℕ) : ℝ) * ((K : ℝ) / 2 ^ n) := hhi
       _ = (K : ℝ) * (((l - k : ℕ) : ℝ) / 2 ^ n) := by ring
 
+/-! ## Indexing strings by their binary value -/
+
+/-- The integer index of `σ` at level `|σ|`: the string read as a binary numeral. -/
+def gridIndex (σ : BitString) : ℕ := σ.foldl (fun k b ↦ 2 * k + if b then 1 else 0) 0
+
+@[simp] theorem gridIndex_nil : gridIndex [] = 0 := rfl
+
+@[simp] theorem gridIndex_append_false (σ : BitString) :
+    gridIndex (σ ++ [false]) = 2 * gridIndex σ := by
+  rw [gridIndex, List.foldl_append, List.foldl_cons, List.foldl_nil, ← gridIndex]
+  simp
+
+@[simp] theorem gridIndex_append_true (σ : BitString) :
+    gridIndex (σ ++ [true]) = 2 * gridIndex σ + 1 := by
+  rw [gridIndex, List.foldl_append, List.foldl_cons, List.foldl_nil, ← gridIndex]
+  simp
+
+theorem gridIndex_lt_two_pow (σ : BitString) : gridIndex σ < 2 ^ σ.length := by
+  induction σ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton σ b ih =>
+    rw [List.length_append, List.length_singleton, pow_succ]
+    cases b
+    · rw [gridIndex_append_false]; omega
+    · rw [gridIndex_append_true]; omega
+
+/-- The left endpoint is the cut point at the string's own index. -/
+theorem dyadicLeft_eq_gridPoint (σ : BitString) :
+    dyadicLeft σ = gridPoint σ.length (gridIndex σ) := by
+  induction σ using List.reverseRecOn with
+  | nil => simp [gridPoint]
+  | append_singleton σ b ih =>
+    rw [dyadicLeft_append, ih, List.length_append, List.length_singleton, gridPoint, gridPoint,
+      dyadicWidth]
+    cases b
+    · rw [gridIndex_append_false]
+      simp only [Bool.false_eq_true, if_false]
+      rw [pow_succ]
+      push_cast
+      ring
+    · rw [gridIndex_append_true]
+      simp only [if_true]
+      rw [inv_pow]
+      push_cast
+      ring
+
+/-- And the right endpoint is the next cut point. -/
+theorem dyadicRight_eq_gridPoint_succ (σ : BitString) :
+    dyadicRight σ = gridPoint σ.length (gridIndex σ + 1) := by
+  rw [dyadicRight, dyadicLeft_eq_gridPoint, gridPoint, gridPoint, dyadicWidth, inv_pow]
+  push_cast
+  ring
+
+/-! ## The order certificate -/
+
+private theorem range_flatMap_pair (m : ℕ) :
+    (List.range m).flatMap (fun k ↦ [2 * k, 2 * k + 1]) = List.range (2 * m) := by
+  induction m with
+  | zero => simp
+  | succ m ih =>
+    rw [List.range_succ, List.flatMap_append, ih, List.flatMap_cons, List.flatMap_nil,
+      List.append_nil]
+    have h1 : 2 * (m + 1) = 2 * m + 1 + 1 := by omega
+    rw [h1, List.range_succ, List.range_succ]
+    simp
+
+/-- **The order certificate**: level `n` enumerates the indices `0, …, 2^n - 1` in order. This
+single statement carries binary order, distinctness, and indexed lookup. -/
+theorem map_gridIndex_levelWords (n : ℕ) :
+    (levelWords n).map gridIndex = List.range (2 ^ n) := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [levelWords_succ, List.map_flatMap]
+    have hcell : ∀ σ : BitString,
+        ([σ ++ [false], σ ++ [true]]).map gridIndex = [2 * gridIndex σ, 2 * gridIndex σ + 1] := by
+      intro σ; simp
+    rw [List.flatMap_congr (fun σ _ ↦ hcell σ),
+      show ((levelWords n).flatMap fun σ ↦ [2 * gridIndex σ, 2 * gridIndex σ + 1])
+        = ((levelWords n).map gridIndex).flatMap (fun k ↦ [2 * k, 2 * k + 1]) by
+        rw [List.flatMap_map], ih, range_flatMap_pair, pow_succ]
+    congr 1
+    omega
+
+/-- Distinctness, an immediate consequence. -/
+theorem nodup_levelWords (n : ℕ) : (levelWords n).Nodup := by
+  have h := map_gridIndex_levelWords n
+  exact List.Nodup.of_map gridIndex (by rw [h]; exact List.nodup_range)
+
+/-! ## Lookup is inverse to indexing
+
+The order certificate says the index map is a bijection onto `Fin (2 ^ n)`; these two lemmas are
+that bijection stated as a pair of inverses, which is the form the endpoint bridges use. -/
+
+/-- Every string of length `n` names a level-`n` cell. -/
+theorem mem_levelWords_length (σ : BitString) : σ ∈ levelWords σ.length := by
+  induction σ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton τ b ih =>
+    rw [List.length_append, List.length_singleton, levelWords_succ, List.mem_flatMap]
+    exact ⟨τ, ih, by cases b <;> simp⟩
+
+/-- At a fixed length the index determines the string. -/
+theorem gridIndex_inj_of_length {σ τ : BitString} (hlen : σ.length = τ.length)
+    (h : gridIndex σ = gridIndex τ) : σ = τ := by
+  have hnd : ((levelWords σ.length).map gridIndex).Nodup := by
+    rw [map_gridIndex_levelWords]; exact List.nodup_range
+  exact List.inj_on_of_nodup_map hnd (mem_levelWords_length σ)
+    (by rw [hlen]; exact mem_levelWords_length τ) h
+
+/-- Lookup then index is the identity on indices below `2 ^ n`. -/
+theorem gridIndex_getD_levelWords {n k : ℕ} (hk : k < 2 ^ n) :
+    gridIndex ((levelWords n).getD k []) = k := by
+  have hlen : k < (levelWords n).length := by rw [length_levelWords]; exact hk
+  have h : ((levelWords n).map gridIndex).getD k 0 = (List.range (2 ^ n)).getD k 0 := by
+    rw [map_gridIndex_levelWords]
+  rw [List.getD_eq_getElem _ _ _, List.getElem_map, List.getD_eq_getElem _ _ _,
+    List.getElem_range] at h
+  · rwa [List.getD_eq_getElem _ _ _]
+  · simpa using hk
+  · simpa using hk
+
+/-- Index then lookup is the identity on strings. -/
+theorem getD_levelWords_gridIndex (σ : BitString) :
+    (levelWords σ.length).getD (gridIndex σ) [] = σ := by
+  have hk : gridIndex σ < (levelWords σ.length).length := by
+    rw [length_levelWords]; exact gridIndex_lt_two_pow σ
+  refine gridIndex_inj_of_length ?_ (gridIndex_getD_levelWords (gridIndex_lt_two_pow σ))
+  rw [List.getD_eq_getElem (hn := hk)]
+  exact length_of_mem_levelWords (List.getElem_mem hk)
+
+/-! ## The endpoint bridges
+
+The endpoint layer of `Dyadic.lean` and the grid layer of this file are two descriptions of the
+same function; these two theorems identify them. With them, everything proved by induction on
+strings transfers to the grid, where indices are integers and comparison is decidable. -/
+
+/-- **One cell's mass.** Advancing the index by one past `σ` adds exactly `σ`'s own contribution.
+This is the single computation behind both bridges. -/
+theorem gridCDF_succ (M : TreeMartingale) (σ : BitString) :
+    gridCDF M σ.length (gridIndex σ + 1)
+      = gridCDF M σ.length (gridIndex σ) + (2⁻¹ : ℚ≥0) ^ σ.length * M.capital σ := by
+  have hk : gridIndex σ < (levelWords σ.length).length := by
+    rw [length_levelWords]; exact gridIndex_lt_two_pow σ
+  have hσ : (levelWords σ.length)[gridIndex σ] = σ := by
+    rw [← List.getD_eq_getElem (d := ([] : BitString)) (hn := hk)]
+    exact getD_levelWords_gridIndex σ
+  have hone : gridIndex σ + 1 - gridIndex σ = 1 := by omega
+  rw [gridCDF_add_slice M σ.length (Nat.le_succ _), hone, List.drop_eq_getElem_cons hk, hσ]
+  simp
+
+/-- **The odd cut.** At the refined level the odd index sits between the two children of `σ`:
+the parent's prefix sum plus the left child's mass. -/
+theorem gridCDF_refine_odd (M : TreeMartingale) (σ : BitString) :
+    gridCDF M (σ.length + 1) (2 * gridIndex σ + 1)
+      = gridCDF M σ.length (gridIndex σ)
+        + (2⁻¹ : ℚ≥0) ^ (σ.length + 1) * M.capital (σ ++ [false]) := by
+  have hlen : (σ ++ [false]).length = σ.length + 1 := by simp
+  have h := gridCDF_succ M (σ ++ [false])
+  rw [hlen, gridIndex_append_false] at h
+  rw [h, gridCDF_refine]
+
+/-- **Left endpoint bridge**: the endpoint value at `0.σ` is the grid value at `σ`'s index. -/
+theorem cdfLeft_eq_gridCDF (M : TreeMartingale) (σ : BitString) :
+    cdfLeft M σ = ((gridCDF M σ.length (gridIndex σ) : ℚ≥0) : ℝ) := by
+  induction σ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton σ b ih =>
+    cases b
+    · rw [cdfLeft_append_false, ih, List.length_append, List.length_singleton,
+        gridIndex_append_false, gridCDF_refine]
+    · rw [cdfLeft_append, if_pos rfl, ih, List.length_append, List.length_singleton,
+        gridIndex_append_true, gridCDF_refine_odd, dyadicWidth, List.length_append,
+        List.length_singleton]
+      push_cast
+      ring
+
+/-- **Right endpoint bridge**: and the value at the far end is the grid value one index on. -/
+theorem cdfRight_eq_gridCDF (M : TreeMartingale) (σ : BitString) :
+    cdfRight M σ = ((gridCDF M σ.length (gridIndex σ + 1) : ℚ≥0) : ℝ) := by
+  rw [cdfRight, cdfLeft_eq_gridCDF, gridCDF_succ, dyadicWidth]
+  push_cast
+  ring
+
 end AlgorithmicRandomness

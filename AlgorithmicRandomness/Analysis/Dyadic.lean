@@ -38,10 +38,10 @@ namespace AlgorithmicRandomness
 /-- The left endpoint `0.σ` of the dyadic interval named by `σ`. -/
 noncomputable def dyadicLeft : BitString → ℝ
   | [] => 0
-  | b :: σ => (if b then 1 / 2 else 0) + (1 / 2) * dyadicLeft σ
+  | b :: σ => (if b then 2⁻¹ else 0) + 2⁻¹ * dyadicLeft σ
 
 /-- The width `2^-|σ|` of that interval. -/
-noncomputable def dyadicWidth (σ : BitString) : ℝ := (1 / 2) ^ σ.length
+noncomputable def dyadicWidth (σ : BitString) : ℝ := (2⁻¹ : ℝ) ^ σ.length
 
 /-- The right endpoint `0.σ + 2^-|σ|`. -/
 noncomputable def dyadicRight (σ : BitString) : ℝ := dyadicLeft σ + dyadicWidth σ
