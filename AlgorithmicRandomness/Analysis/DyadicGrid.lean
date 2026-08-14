@@ -77,6 +77,11 @@ theorem gridPoint_mono {n k l : ℕ} (h : k ≤ l) : gridPoint n k ≤ gridPoint
   rw [gridPoint, gridPoint]
   gcongr
 
+/-- At a fixed level the order on cut points is the order on indices, in both directions. -/
+theorem gridPoint_le_iff {n k l : ℕ} : gridPoint n k ≤ gridPoint n l ↔ k ≤ l := by
+  rw [gridPoint, gridPoint, div_le_div_iff_of_pos_right (by positivity : (0 : ℝ) < 2 ^ n),
+    Nat.cast_le]
+
 /-- The gap between two cut points is the index difference, scaled. -/
 theorem gridPoint_sub {n k l : ℕ} (h : k ≤ l) :
     gridPoint n l - gridPoint n k = ((l - k : ℕ) : ℝ) / 2 ^ n := by
