@@ -32,3 +32,4 @@ import AlgorithmicRandomness.Analysis.DyadicGrid
 import AlgorithmicRandomness.Analysis.Lipschitz
 import AlgorithmicRandomness.Analysis.UnitDyadic
 import AlgorithmicRandomness.Analysis.Extension
+import AlgorithmicRandomness.Analysis.CDFProgram

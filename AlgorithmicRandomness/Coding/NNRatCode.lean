@@ -183,6 +183,26 @@ theorem primrec_scalePowTwo : Primrec₂ scalePowTwo :=
       (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd)))
     (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))
 
+/-- Dividing a coded rational by a power of two, which is what a cell's measure `2^-n` is. The
+denominator is stored shifted, so scaling it is `2 ^ k * (d + 1) - 1`; the subtraction is exact
+because `2 ^ k * (d + 1)` is positive. -/
+def divPowTwo (k m : ℕ) : ℕ := Nat.pair m.unpair.1 (2 ^ k * (m.unpair.2 + 1) - 1)
+
+theorem value_divPowTwo (k m : ℕ) : value (divPowTwo k m) = value m / 2 ^ k := by
+  have hpos : 0 < 2 ^ k * (m.unpair.2 + 1) := Nat.mul_pos (Nat.two_pow_pos k) m.unpair.2.succ_pos
+  rw [divPowTwo, value_pair, Nat.sub_add_cancel hpos, value, div_div]
+  push_cast
+  ring_nf
+
+theorem primrec_divPowTwo : Primrec₂ divPowTwo :=
+  Primrec₂.natPair.comp
+    (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd))
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp
+        ((Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) Primrec.fst)
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+      (Primrec.const 1))
+
 /-- Comparison of coded rationals, decided in `ℕ` by cross-multiplication. -/
 def le (m k : ℕ) : Bool :=
   decide (m.unpair.1 * (k.unpair.2 + 1) ≤ k.unpair.1 * (m.unpair.2 + 1))
