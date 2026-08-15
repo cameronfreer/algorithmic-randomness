@@ -23,6 +23,25 @@ Established implications among randomness notions:
 | computably random | Schnorr random | simulation of the conditional-probability martingale |
 | Martin-Löf random | Schnorr random | structural, and also by composition |
 
+### Differentiability of computable Lipschitz functions
+
+The library's main application is one direction of the characterization of computable randomness
+by differentiability (Freer–Kjos-Hanssen–Nies–Stephan,
+[arXiv:1402.2429](https://arxiv.org/abs/1402.2429), Theorem 4.2):
+
+> if `z ∈ [0, 1]` is not computably random, then some computable Lipschitz function fails to be
+> differentiable at `z`,
+
+in sequence form over Cantor space and in real-number form over `[0, 1]`. Here *computable
+Lipschitz function* means a function on the unit interval presented by exact rational values at
+the dyadic cut points together with a natural Lipschitz bound, extended canonically to `ℝ`.
+
+The converse is **not** formalized. That direction — computable randomness of `z` implies every
+computable Lipschitz function is differentiable at `z` — rests on the Brattka–Miller–Nies
+characterization of computable randomness by differentiability of computable nondecreasing
+functions ([arXiv:1104.4465](https://arxiv.org/abs/1104.4465)), which this library does not
+develop. The full biconditional is therefore not established here.
+
 ## Verification
 
 CI enforces all of the following on every push:
@@ -47,6 +66,13 @@ layer is exercised rather than merely typechecked.
 - Rational tree martingales, Ville's inequality, and computable randomness.
 - The randomness hierarchy: Martin-Löf random implies computably random implies Schnorr
   random, the second by simulating a computable-real martingale with an exactly rational one.
+- Savings normalization, and an oscillating martingale whose capital stays in `[1, 4]` while
+  hitting exactly `3` and exactly `2` arbitrarily late along any path where the source succeeds.
+- The cumulative function of a tree martingale, built directly at dyadic endpoints, whose chord
+  slope across a cylinder is *exactly* the capital there.
+- Computable Lipschitz functions with exact rational values at dyadic points, and the
+  nondifferentiability theorem above.
+- Binary expansions of reals, with `realOf` surjective onto the unit interval.
 
 ## Architecture
 
@@ -72,7 +98,8 @@ The source is organized by mathematical layer:
 | `Coding/` | Program codes and executable numeric and finite-open representations |
 | `EffectiveOpen/` | Coded c.e. open families, reindexing, and trimming |
 | `Randomness/` | Martin-Löf and Schnorr tests, and randomness implications |
-| `Martingale/` | Tree martingales, Ville's inequality, and computable martingales |
+| `Martingale/` | Tree martingales, Ville's inequality, computable and savings martingales |
+| `Analysis/` | Dyadic intervals, cumulative functions, computable Lipschitz functions |
 
 ## Using the library
 

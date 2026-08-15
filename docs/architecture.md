@@ -96,6 +96,85 @@ dominates an unbounded one is unbounded. That is what allows a theorem whose hyp
 rational-valued computable martingale to be discharged by a construction that is naturally
 real-valued.
 
+## Normalization before construction
+
+A martingale that succeeds may still lose everything it gains infinitely often. Constructions
+downstream of success need more than success, and the library supplies it by *normalizing* first
+rather than by strengthening every later argument.
+
+The savings normalization splits capital into a banked part and an active part, keeps the active
+part bounded, and banks a fixed *fraction* of any gain rather than a fixed amount. The fraction
+matters: banking half is free of truncated subtraction on `ℚ≥0`, and it makes the counting
+identity relating capital to the number of deposits cancel exactly. Success then forces
+unboundedly many deposits, and each deposit contributes a definite amount, so the banked part is
+itself unbounded — a stronger conclusion than the original success, obtained without any
+positivity assumption on the active part.
+
+What this buys is a martingale whose capital can be confined to a bounded interval while still
+oscillating within it. That is the object the differentiability argument needs, and it cannot be
+built from success alone. It also explains a constraint that looks arbitrary from outside: the
+oscillation targets must be *interior* to the confining bounds. A fair martingale confined to an
+interval that attains an endpoint is frozen at that endpoint forever, so a construction
+oscillating between the endpoints of its own bounds is impossible. The oscillator therefore
+crosses two interior levels while remaining inside strictly wider hard bounds, and the bound
+proof appeals to the savings property rather than to nonnegativity.
+
+## The cumulative function is built at dyadic points, not from a measure
+
+A tree martingale determines a measure, and that measure has a cumulative distribution function.
+The library does not construct it that way. The cumulative function is defined directly at the
+endpoints of dyadic intervals, by a fold along the string.
+
+The reason is the form of the theorem it has to feed. The chord slope across a cylinder must
+equal the capital there *exactly*, with no error term and no almost-everywhere qualification,
+because the eventual argument evaluates it at one specific point. Routing through a measure would
+make the slope a statement about the measure of an interval, recovering the capital only up to
+identifications that are invisible pointwise. Defined directly, the identity is definitional
+arithmetic.
+
+Three further choices follow from the same discipline:
+
+- **Cut points, not cells.** A level is indexed by the `2ⁿ + 1` points `k / 2ⁿ` rather than by its
+  `2ⁿ` cells. This treats `0` and `1` uniformly, and — more importantly — pins each dyadic point
+  to an integer index, so that *global well-definedness* becomes a comparison of natural numbers
+  after refining two levels to a common one. The alternative is a normal-form argument about
+  binary strings modulo trailing zeros, which is exactly what the integer indexing avoids.
+- **Half-open cells and closed intervals are different objects.** Cells partition; chords are
+  taken across closed intervals. Conflating them fails at points whose binary expansion is
+  eventually constant, which sit at an endpoint of every sufficiently long prefix interval. Both
+  are provided, and the closed version is why no "not a dyadic rational" hypothesis appears
+  anywhere in the differentiability argument.
+- **The unit interval is the domain; the ambient function is derived.** A computable Lipschitz
+  function is presented as a function on `[0, 1]` together with a program giving its exact values
+  at the dyadic cut points, and the function on `ℝ` is obtained from it canonically by constant
+  extension. A structure with a bare `ℝ → ℝ` field would overclaim: a function agreeing with
+  computable data on `[0, 1]` need not be computable anywhere outside it.
+
+Extension off the dyadic points is McShane's theorem, not a density-and-limits argument — a
+real-valued function Lipschitz on a subset extends to the whole space with no completeness or
+density input. Density enters only to show the extension is *unique* on `[0, 1]`, which is what
+licenses treating it as the cumulative function rather than as one of many.
+
+## Termination bookkeeping appears only where it is earned
+
+Several coded constructions carry explicit fuel: a step budget, a proof that some budget
+suffices, and primitive recursive arithmetic in the budget. This is unavoidable where a program
+runs *another* program, since the outer program's totality then depends on the inner one's.
+
+It is not unavoidable elsewhere, and the library does not pay for it elsewhere. Where a
+construction consumes a bundle that already carries totality as data, the evaluator is total and
+computable, and the construction can be arranged to recurse on a numeric parameter rather than to
+fold over a structure. The grid program is the case in point: it recurses on the cut index, so
+composition suffices and nothing about termination needs to be said. The distinction to keep in
+view is whether the code being run arrived as raw syntax or as part of a bundle whose totality was
+established when the bundle was built.
+
+Relatedly, uniformity is not free and is not always needed. It is load-bearing wherever a program
+receives another program as input and dispatches on it — trimming, the universal test, threshold
+enumeration. A construction that consumes a bundle and emits one total evaluation code needs no
+uniform syntactic transformer, and stating one would be a stronger claim than the development
+supports.
+
 ## Effective and non-effective notions are not conflated
 
 Notions that admit a universal test and notions that do not are kept structurally distinct.
