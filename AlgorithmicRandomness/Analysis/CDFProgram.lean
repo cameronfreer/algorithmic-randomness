@@ -33,23 +33,7 @@ open scoped NNReal NNRat
 
 namespace AlgorithmicRandomness
 
-/-! ## The level enumeration is primitive recursive -/
-
-theorem primrec_levelWords : Primrec levelWords := by
-  have hchildren : Primrec₂ fun (_ : ℕ × (ℕ × List BitString)) (σ : BitString) ↦
-      [σ ++ [false], σ ++ [true]] :=
-    Primrec.list_cons.comp (Primrec.list_append.comp Primrec.snd (Primrec.const [false]))
-      (Primrec.list_cons.comp (Primrec.list_append.comp Primrec.snd (Primrec.const [true]))
-        (Primrec.const []))
-  have hstep : Primrec₂ fun (_ : ℕ) (p : ℕ × List BitString) ↦
-      p.2.flatMap fun σ ↦ [σ ++ [false], σ ++ [true]] :=
-    Primrec.list_flatMap (Primrec.snd.comp Primrec.snd) hchildren
-  refine (Primrec.nat_rec' Primrec.id (Primrec.const [([] : BitString)]) hstep).of_eq fun n ↦ ?_
-  induction n with
-  | zero => rfl
-  | succ n ih =>
-    rw [levelWords_succ, ← ih]
-    rfl
+open BitString
 
 /-! ## The coded prefix sum -/
 
@@ -60,23 +44,23 @@ def gridCDFCode (M : ComputableMartingale) (n : ℕ) : ℕ → ℕ
   | k + 1 =>
       NNRatCode.add (gridCDFCode M n k)
         (NNRatCode.divPowTwo n
-          (M.program.toFun (Encodable.encode ((levelWords n).getD k ([] : BitString)))))
+          (M.program.toFun (Encodable.encode ((wordsOfLength n).getD k ([] : BitString)))))
 
 /-- **Correctness**, in range. Each step is `gridCDF_succ` applied to the `k`-th cell, which
-`gridIndex_getD_levelWords` identifies as the string of index `k`. -/
+`gridIndex_getD_wordsOfLength` identifies as the string of index `k`. -/
 theorem value_gridCDFCode (M : ComputableMartingale) {n k : ℕ} (hk : k ≤ 2 ^ n) :
     NNRatCode.value (gridCDFCode M n k) = gridCDF M.toTreeMartingale n k := by
   induction k with
   | zero => rw [gridCDFCode, NNRatCode.value_ofNat, gridCDF_zero]; norm_num
   | succ k ih =>
     have hklt : k < 2 ^ n := by omega
-    have hklen : k < (levelWords n).length := by rw [length_levelWords]; exact hklt
-    set σ := (levelWords n).getD k ([] : BitString) with hσ
-    have hmem : σ ∈ levelWords n := by
+    have hklen : k < (wordsOfLength n).length := by rw [length_wordsOfLength]; exact hklt
+    set σ := (wordsOfLength n).getD k ([] : BitString) with hσ
+    have hmem : σ ∈ wordsOfLength n := by
       rw [hσ, List.getD_eq_getElem _ _ hklen]
       exact List.getElem_mem hklen
-    have hlen : σ.length = n := length_of_mem_levelWords hmem
-    have hidx : gridIndex σ = k := by rw [hσ]; exact gridIndex_getD_levelWords hklt
+    have hlen : σ.length = n := length_of_mem_wordsOfLength hmem
+    have hidx : gridIndex σ = k := by rw [hσ]; exact gridIndex_getD_wordsOfLength hklt
     rw [gridCDFCode, NNRatCode.value_add, ih (by omega), NNRatCode.value_divPowTwo,
       M.eval_capital σ]
     have hsucc := gridCDF_succ M.toTreeMartingale σ
@@ -88,15 +72,15 @@ theorem value_gridCDFCode (M : ComputableMartingale) {n k : ℕ} (hk : k ≤ 2 ^
 theorem computable_gridCDFCode (M : ComputableMartingale) :
     Computable fun p : ℕ × ℕ ↦ gridCDFCode M p.1 p.2 := by
   have hcell : Computable fun r : (ℕ × ℕ) × (ℕ × ℕ) ↦
-      M.program.toFun (Encodable.encode ((levelWords r.1.1).getD r.2.1 ([] : BitString))) :=
+      M.program.toFun (Encodable.encode ((wordsOfLength r.1.1).getD r.2.1 ([] : BitString))) :=
     M.program.computable_toFun.comp
       (Primrec.encode.comp
         ((Primrec.list_getD ([] : BitString)).comp
-          (primrec_levelWords.comp (Primrec.fst.comp Primrec.fst))
+          (primrec_wordsOfLength.comp (Primrec.fst.comp Primrec.fst))
           (Primrec.fst.comp Primrec.snd))).to_comp
   have hstep : Computable₂ fun (p : ℕ × ℕ) (q : ℕ × ℕ) ↦
       NNRatCode.add q.2 (NNRatCode.divPowTwo p.1
-        (M.program.toFun (Encodable.encode ((levelWords p.1).getD q.1 ([] : BitString))))) :=
+        (M.program.toFun (Encodable.encode ((wordsOfLength p.1).getD q.1 ([] : BitString))))) :=
     NNRatCode.primrec_add.to_comp.comp (Computable.snd.comp Computable.snd)
       (NNRatCode.primrec_divPowTwo.to_comp.comp (Computable.fst.comp Computable.fst) hcell)
   refine (Computable.nat_rec (f := fun p : ℕ × ℕ ↦ p.2)

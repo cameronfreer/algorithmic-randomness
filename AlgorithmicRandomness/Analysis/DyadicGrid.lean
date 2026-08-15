@@ -13,8 +13,8 @@ points* rather than the cells as primary handles `0` and `1` uniformly, and pins
 point to an integer index at that level — which is what makes global well-definedness a
 comparison of integers rather than a normal-form argument about binary strings.
 
-The cells are enumerated as a `List`, not a `Finset`: the eventual computability witness will
-need to run over them, and mathlib supplies no `Primcodable (Finset _)`. `gridCDF` is kept exact
+The cells at level `n` are `BitString.wordsOfLength n`, which lives in the Cantor layer because
+the prefix-free machinery enumerates candidate inputs with the same list. `gridCDF` is kept exact
 in `ℚ≥0`, with casts to `ℝ` only in semantic statements, so the executable/semantic split is
 already in place rather than being retrofitted.
 -/
@@ -23,36 +23,7 @@ open scoped NNRat
 
 namespace AlgorithmicRandomness
 
-/-! ## The level enumeration -/
-
-/-- The level-`n` cells, in binary order. -/
-def levelWords : ℕ → List BitString
-  | 0 => [[]]
-  | n + 1 => (levelWords n).flatMap fun σ ↦ [σ ++ [false], σ ++ [true]]
-
-@[simp] theorem levelWords_zero : levelWords 0 = [[]] := rfl
-
-theorem levelWords_succ (n : ℕ) :
-    levelWords (n + 1) = (levelWords n).flatMap fun σ ↦ [σ ++ [false], σ ++ [true]] := rfl
-
-/-- There are `2 ^ n` cells at level `n`. -/
-@[simp] theorem length_levelWords (n : ℕ) : (levelWords n).length = 2 ^ n := by
-  induction n with
-  | zero => rfl
-  | succ n ih =>
-    rw [levelWords_succ, List.length_flatMap]
-    simp [ih, pow_succ, Nat.mul_comm]
-
-/-- Every level-`n` cell is named by a string of length `n`. -/
-theorem length_of_mem_levelWords {n : ℕ} {σ : BitString} (h : σ ∈ levelWords n) :
-    σ.length = n := by
-  induction n generalizing σ with
-  | zero => rw [levelWords_zero, List.mem_singleton] at h; rw [h]; rfl
-  | succ n ih =>
-    rw [levelWords_succ, List.mem_flatMap] at h
-    obtain ⟨τ, hτ, hmem⟩ := h
-    have hτn := ih hτ
-    rcases List.mem_pair.mp hmem with rfl | rfl <;> simp [hτn]
+open BitString
 
 /-! ## Cut points -/
 
@@ -92,7 +63,7 @@ theorem gridPoint_sub {n k l : ℕ} (h : k ≤ l) :
 /-- The cumulative value at the `k`-th cut point of level `n`: the mass of the first `k` cells.
 Exact in `ℚ≥0`, and a `List` sum so that it stays executable. -/
 def gridCDF (M : TreeMartingale) (n k : ℕ) : ℚ≥0 :=
-  (((levelWords n).take k).map fun σ ↦ (2⁻¹ : ℚ≥0) ^ n * M.capital σ).sum
+  (((wordsOfLength n).take k).map fun σ ↦ (2⁻¹ : ℚ≥0) ^ n * M.capital σ).sum
 
 @[simp] theorem gridCDF_zero (M : TreeMartingale) (n : ℕ) : gridCDF M n 0 = 0 := by
   rw [gridCDF]; simp
@@ -100,11 +71,11 @@ def gridCDF (M : TreeMartingale) (n k : ℕ) : ℚ≥0 :=
 /-- Splitting the prefix sum at an intermediate index. -/
 theorem gridCDF_add_slice (M : TreeMartingale) (n : ℕ) {k l : ℕ} (h : k ≤ l) :
     gridCDF M n l = gridCDF M n k
-      + (((((levelWords n).drop k).take (l - k))).map fun σ ↦
+      + (((((wordsOfLength n).drop k).take (l - k))).map fun σ ↦
           (2⁻¹ : ℚ≥0) ^ n * M.capital σ).sum := by
   rw [gridCDF, gridCDF, ← List.sum_append, ← List.map_append]
   congr 2
-  rw [← List.take_append_drop k ((levelWords n).take l)]
+  rw [← List.take_append_drop k ((wordsOfLength n).take l)]
   congr 1
   · rw [List.take_take, Nat.min_eq_left h]
   · rw [List.drop_take, List.take_drop]
@@ -128,9 +99,9 @@ theorem take_flatMap_pair (f : BitString → List BitString)
 fairness — each cell's two children carry its mass between them. -/
 theorem gridCDF_refine (M : TreeMartingale) (n k : ℕ) :
     gridCDF M (n + 1) (2 * k) = gridCDF M n k := by
-  rw [gridCDF, gridCDF, levelWords_succ,
-    take_flatMap_pair _ (fun σ ↦ by simp) (levelWords n) k]
-  induction ((levelWords n).take k) with
+  rw [gridCDF, gridCDF, wordsOfLength_succ,
+    take_flatMap_pair _ (fun σ ↦ by simp) (wordsOfLength n) k]
+  induction ((wordsOfLength n).take k) with
   | nil => simp
   | cons σ l ih =>
     rw [List.flatMap_cons, List.map_append, List.sum_append, ih, List.map_cons, List.map_cons,
@@ -170,12 +141,12 @@ theorem gridCDF_increment_bounds (M : TreeMartingale) {c K : ℚ≥0} (n : ℕ)
         ≤ ((gridCDF M n l : ℚ≥0) : ℝ) - ((gridCDF M n k : ℚ≥0) : ℝ) ∧
       ((gridCDF M n l : ℚ≥0) : ℝ) - ((gridCDF M n k : ℚ≥0) : ℝ)
         ≤ (K : ℝ) * (gridPoint n l - gridPoint n k) := by
-  set L := (((levelWords n).drop k).take (l - k)).map fun σ ↦ (2⁻¹ : ℚ≥0) ^ n * M.capital σ
-    with hL
+  set L := (((wordsOfLength n).drop k).take (l - k)).map
+    fun σ ↦ (2⁻¹ : ℚ≥0) ^ n * M.capital σ with hL
   set S := L.map (fun q : ℚ≥0 ↦ (q : ℝ)) with hS
   have hlen : S.length = l - k := by
     rw [hS, hL, List.length_map, List.length_map, List.length_take, List.length_drop,
-      length_levelWords]
+      length_wordsOfLength]
     omega
   have hsum : (L.sum : ℝ) = S.sum := by
     rw [hS]
@@ -283,25 +254,25 @@ private theorem range_flatMap_pair (m : ℕ) :
 
 /-- **The order certificate**: level `n` enumerates the indices `0, …, 2^n - 1` in order. This
 single statement carries binary order, distinctness, and indexed lookup. -/
-theorem map_gridIndex_levelWords (n : ℕ) :
-    (levelWords n).map gridIndex = List.range (2 ^ n) := by
+theorem map_gridIndex_wordsOfLength (n : ℕ) :
+    (wordsOfLength n).map gridIndex = List.range (2 ^ n) := by
   induction n with
   | zero => simp
   | succ n ih =>
-    rw [levelWords_succ, List.map_flatMap]
+    rw [wordsOfLength_succ, List.map_flatMap]
     have hcell : ∀ σ : BitString,
         ([σ ++ [false], σ ++ [true]]).map gridIndex = [2 * gridIndex σ, 2 * gridIndex σ + 1] := by
       intro σ; simp
     rw [List.flatMap_congr (fun σ _ ↦ hcell σ),
-      show ((levelWords n).flatMap fun σ ↦ [2 * gridIndex σ, 2 * gridIndex σ + 1])
-        = ((levelWords n).map gridIndex).flatMap (fun k ↦ [2 * k, 2 * k + 1]) by
+      show ((wordsOfLength n).flatMap fun σ ↦ [2 * gridIndex σ, 2 * gridIndex σ + 1])
+        = ((wordsOfLength n).map gridIndex).flatMap (fun k ↦ [2 * k, 2 * k + 1]) by
         rw [List.flatMap_map], ih, range_flatMap_pair, pow_succ]
     congr 1
     omega
 
 /-- Distinctness, an immediate consequence. -/
-theorem nodup_levelWords (n : ℕ) : (levelWords n).Nodup := by
-  have h := map_gridIndex_levelWords n
+theorem nodup_wordsOfLength (n : ℕ) : (wordsOfLength n).Nodup := by
+  have h := map_gridIndex_wordsOfLength n
   exact List.Nodup.of_map gridIndex (by rw [h]; exact List.nodup_range)
 
 /-! ## Lookup is inverse to indexing
@@ -309,28 +280,20 @@ theorem nodup_levelWords (n : ℕ) : (levelWords n).Nodup := by
 The order certificate says the index map is a bijection onto `Fin (2 ^ n)`; these two lemmas are
 that bijection stated as a pair of inverses, which is the form the endpoint bridges use. -/
 
-/-- Every string of length `n` names a level-`n` cell. -/
-theorem mem_levelWords_length (σ : BitString) : σ ∈ levelWords σ.length := by
-  induction σ using List.reverseRecOn with
-  | nil => simp
-  | append_singleton τ b ih =>
-    rw [List.length_append, List.length_singleton, levelWords_succ, List.mem_flatMap]
-    exact ⟨τ, ih, by cases b <;> simp⟩
-
 /-- At a fixed length the index determines the string. -/
 theorem gridIndex_inj_of_length {σ τ : BitString} (hlen : σ.length = τ.length)
     (h : gridIndex σ = gridIndex τ) : σ = τ := by
-  have hnd : ((levelWords σ.length).map gridIndex).Nodup := by
-    rw [map_gridIndex_levelWords]; exact List.nodup_range
-  exact List.inj_on_of_nodup_map hnd (mem_levelWords_length σ)
-    (by rw [hlen]; exact mem_levelWords_length τ) h
+  have hnd : ((wordsOfLength σ.length).map gridIndex).Nodup := by
+    rw [map_gridIndex_wordsOfLength]; exact List.nodup_range
+  exact List.inj_on_of_nodup_map hnd (mem_wordsOfLength_length σ)
+    (by rw [hlen]; exact mem_wordsOfLength_length τ) h
 
 /-- Lookup then index is the identity on indices below `2 ^ n`. -/
-theorem gridIndex_getD_levelWords {n k : ℕ} (hk : k < 2 ^ n) :
-    gridIndex ((levelWords n).getD k []) = k := by
-  have hlen : k < (levelWords n).length := by rw [length_levelWords]; exact hk
-  have h : ((levelWords n).map gridIndex).getD k 0 = (List.range (2 ^ n)).getD k 0 := by
-    rw [map_gridIndex_levelWords]
+theorem gridIndex_getD_wordsOfLength {n k : ℕ} (hk : k < 2 ^ n) :
+    gridIndex ((wordsOfLength n).getD k []) = k := by
+  have hlen : k < (wordsOfLength n).length := by rw [length_wordsOfLength]; exact hk
+  have h : ((wordsOfLength n).map gridIndex).getD k 0 = (List.range (2 ^ n)).getD k 0 := by
+    rw [map_gridIndex_wordsOfLength]
   rw [List.getD_eq_getElem _ _ _, List.getElem_map, List.getD_eq_getElem _ _ _,
     List.getElem_range] at h
   · rwa [List.getD_eq_getElem _ _ _]
@@ -338,13 +301,13 @@ theorem gridIndex_getD_levelWords {n k : ℕ} (hk : k < 2 ^ n) :
   · simpa using hk
 
 /-- Index then lookup is the identity on strings. -/
-theorem getD_levelWords_gridIndex (σ : BitString) :
-    (levelWords σ.length).getD (gridIndex σ) [] = σ := by
-  have hk : gridIndex σ < (levelWords σ.length).length := by
-    rw [length_levelWords]; exact gridIndex_lt_two_pow σ
-  refine gridIndex_inj_of_length ?_ (gridIndex_getD_levelWords (gridIndex_lt_two_pow σ))
+theorem getD_wordsOfLength_gridIndex (σ : BitString) :
+    (wordsOfLength σ.length).getD (gridIndex σ) [] = σ := by
+  have hk : gridIndex σ < (wordsOfLength σ.length).length := by
+    rw [length_wordsOfLength]; exact gridIndex_lt_two_pow σ
+  refine gridIndex_inj_of_length ?_ (gridIndex_getD_wordsOfLength (gridIndex_lt_two_pow σ))
   rw [List.getD_eq_getElem (hn := hk)]
-  exact length_of_mem_levelWords (List.getElem_mem hk)
+  exact length_of_mem_wordsOfLength (List.getElem_mem hk)
 
 /-! ## The endpoint bridges
 
@@ -357,11 +320,11 @@ This is the single computation behind both bridges. -/
 theorem gridCDF_succ (M : TreeMartingale) (σ : BitString) :
     gridCDF M σ.length (gridIndex σ + 1)
       = gridCDF M σ.length (gridIndex σ) + (2⁻¹ : ℚ≥0) ^ σ.length * M.capital σ := by
-  have hk : gridIndex σ < (levelWords σ.length).length := by
-    rw [length_levelWords]; exact gridIndex_lt_two_pow σ
-  have hσ : (levelWords σ.length)[gridIndex σ] = σ := by
+  have hk : gridIndex σ < (wordsOfLength σ.length).length := by
+    rw [length_wordsOfLength]; exact gridIndex_lt_two_pow σ
+  have hσ : (wordsOfLength σ.length)[gridIndex σ] = σ := by
     rw [← List.getD_eq_getElem (d := ([] : BitString)) (hn := hk)]
-    exact getD_levelWords_gridIndex σ
+    exact getD_wordsOfLength_gridIndex σ
   have hone : gridIndex σ + 1 - gridIndex σ = 1 := by omega
   rw [gridCDF_add_slice M σ.length (Nat.le_succ _), hone, List.drop_eq_getElem_cons hk, hσ]
   simp

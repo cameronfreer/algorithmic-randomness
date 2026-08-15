@@ -62,6 +62,46 @@ theorem compatible_of_agree {σ τ : BitString}
   · exact Or.inl (prefix_of_agree hle h)
   · exact Or.inr (prefix_of_agree hle fun i hi hj ↦ (h i hj hi).symm)
 
+/-! ## Enumerating the strings of a given length
+
+A `List` rather than a `Finset`, since code-producing constructions have to run over it and the
+pinned mathlib supplies no `Primcodable (Finset _)`. The order is binary: extending on the right
+with `false` before `true`. -/
+
+/-- All strings of length `n`, in binary order. -/
+def wordsOfLength : ℕ → List BitString
+  | 0 => [[]]
+  | n + 1 => (wordsOfLength n).flatMap fun σ ↦ [σ ++ [false], σ ++ [true]]
+
+@[simp] theorem wordsOfLength_zero : wordsOfLength 0 = [[]] := rfl
+
+theorem wordsOfLength_succ (n : ℕ) :
+    wordsOfLength (n + 1) = (wordsOfLength n).flatMap fun σ ↦ [σ ++ [false], σ ++ [true]] := rfl
+
+@[simp] theorem length_wordsOfLength (n : ℕ) : (wordsOfLength n).length = 2 ^ n := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    rw [wordsOfLength_succ, List.length_flatMap]
+    simp [ih, pow_succ, Nat.mul_comm]
+
+theorem length_of_mem_wordsOfLength {n : ℕ} {σ : BitString} (h : σ ∈ wordsOfLength n) :
+    σ.length = n := by
+  induction n generalizing σ with
+  | zero => rw [wordsOfLength_zero, List.mem_singleton] at h; rw [h]; rfl
+  | succ n ih =>
+    rw [wordsOfLength_succ, List.mem_flatMap] at h
+    obtain ⟨τ, hτ, hmem⟩ := h
+    have hτn := ih hτ
+    rcases List.mem_pair.mp hmem with rfl | rfl <;> simp [hτn]
+
+theorem mem_wordsOfLength_length (σ : BitString) : σ ∈ wordsOfLength σ.length := by
+  induction σ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton τ b ih =>
+    rw [List.length_append, List.length_singleton, wordsOfLength_succ, List.mem_flatMap]
+    exact ⟨τ, ih, by cases b <;> simp⟩
+
 end BitString
 
 /-- The basic clopen set of all infinite sequences extending the finite string `σ`. -/

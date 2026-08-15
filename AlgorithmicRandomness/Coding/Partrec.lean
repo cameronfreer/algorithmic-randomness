@@ -217,6 +217,27 @@ theorem enumeratesString_replicateTrueFamilyCode {n : ℕ} {σ : BitString} :
     exact ⟨0, Encodable.encode (List.replicate n true),
       by rw [eval_replicateTrueFamilyCode]; exact Part.mem_some _, Encodable.encodek _⟩
 
+/-! ## Enumerating the strings of a given length
+
+`BitString.wordsOfLength` is the enumeration that coded constructions run over: the grid sum uses
+it to index cells, and the prefix-free machinery uses it to enumerate candidate inputs. -/
+
+theorem BitString.primrec_wordsOfLength : Primrec BitString.wordsOfLength := by
+  have hchildren : Primrec₂ fun (_ : ℕ × (ℕ × List BitString)) (σ : BitString) ↦
+      [σ ++ [false], σ ++ [true]] :=
+    Primrec.list_cons.comp (Primrec.list_append.comp Primrec.snd (Primrec.const [false]))
+      (Primrec.list_cons.comp (Primrec.list_append.comp Primrec.snd (Primrec.const [true]))
+        (Primrec.const []))
+  have hstep : Primrec₂ fun (_ : ℕ) (p : ℕ × List BitString) ↦
+      p.2.flatMap fun σ ↦ [σ ++ [false], σ ++ [true]] :=
+    Primrec.list_flatMap (Primrec.snd.comp Primrec.snd) hchildren
+  refine (Primrec.nat_rec' Primrec.id (Primrec.const [([] : BitString)]) hstep).of_eq fun n ↦ ?_
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    rw [BitString.wordsOfLength_succ, ← ih]
+    rfl
+
 section Examples
 -- executable acceptance checks; fuel constants found experimentally with `#eval`
 set_option linter.hashCommand false
