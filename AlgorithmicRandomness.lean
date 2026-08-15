@@ -29,6 +29,7 @@ import AlgorithmicRandomness.Martingale.Savings
 import AlgorithmicRandomness.Martingale.Oscillation
 import AlgorithmicRandomness.Analysis.Dyadic
 import AlgorithmicRandomness.Analysis.BinaryExpansion
+import AlgorithmicRandomness.Analysis.ChordSlope
 import AlgorithmicRandomness.Analysis.DyadicGrid
 import AlgorithmicRandomness.Analysis.Lipschitz
 import AlgorithmicRandomness.Analysis.UnitDyadic
