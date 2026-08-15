@@ -112,4 +112,93 @@ theorem tendsto_prefix_right_realOf (x : Cantor) :
     (fun n ↦ realOf_le_dyadicRight_initSeg x n)
     (fun n ↦ by linarith [dyadicRight_sub_realOf_le_width x n])
 
+/-! ## Uniqueness
+
+Containment in every prefix interval determines the point, since two points in an interval differ
+by at most its width. This is the converse half of the definition, and it is what makes the greedy
+construction below identify `realOf` rather than merely produce something inside the intervals. -/
+
+theorem eq_realOf_of_mem_all_dyadicInterval {z : ℝ} {x : Cantor}
+    (h : ∀ n, z ∈ dyadicInterval (initSeg x n)) : z = realOf x := by
+  simp only [dyadicInterval, Set.mem_Icc] at h
+  have habs : ∀ n, |z - realOf x| ≤ dyadicWidth (initSeg x n) := by
+    intro n
+    obtain ⟨h1, h2⟩ := h n
+    obtain ⟨h3, h4⟩ := realOf_mem_dyadicInterval x n
+    rw [dyadicRight] at h2 h4
+    rw [abs_le]
+    constructor <;> linarith
+  have hle : |z - realOf x| ≤ 0 := ge_of_tendsto' (tendsto_prefix_width_zero x) habs
+  have := abs_nonpos_iff.mp hle
+  linarith [sub_eq_zero.mp this]
+
+/-! ## Every point of the unit interval has an expansion
+
+The bits are chosen greedily: having narrowed to `[σ]`, take `true` exactly when `z` lies strictly
+past the midpoint. The invariant is that `z` stays inside `[σ]`, and the midpoint is shared between
+the two children (`dyadicRight_append_false_eq_left_append_true`), so one of them always keeps it.
+-/
+
+/-- The greedily chosen prefix of length `n`. -/
+noncomputable def greedyPrefix (z : ℝ) : ℕ → BitString
+  | 0 => []
+  | n + 1 =>
+      greedyPrefix z n ++
+        [if dyadicRight (greedyPrefix z n ++ [false]) < z then true else false]
+
+/-- The corresponding point of Cantor space. -/
+noncomputable def greedySeq (z : ℝ) (n : ℕ) : Bool :=
+  if dyadicRight (greedyPrefix z n ++ [false]) < z then true else false
+
+theorem greedyPrefix_succ (z : ℝ) (n : ℕ) :
+    greedyPrefix z (n + 1) = greedyPrefix z n ++ [greedySeq z n] := rfl
+
+@[simp] theorem initSeg_greedySeq (z : ℝ) (n : ℕ) :
+    initSeg (greedySeq z) n = greedyPrefix z n := by
+  induction n with
+  | zero => rfl
+  | succ n ih => rw [initSeg_succ, ih, greedyPrefix_succ]
+
+theorem mem_dyadicInterval_greedyPrefix {z : ℝ} (hz : z ∈ Set.Icc (0 : ℝ) 1) (n : ℕ) :
+    z ∈ dyadicInterval (greedyPrefix z n) := by
+  induction n with
+  | zero => simpa [greedyPrefix, dyadicInterval] using hz
+  | succ n ih =>
+    simp only [dyadicInterval, Set.mem_Icc] at ih ⊢
+    obtain ⟨hl, hr⟩ := ih
+    rw [greedyPrefix_succ, greedySeq]
+    by_cases hc : dyadicRight (greedyPrefix z n ++ [false]) < z
+    · rw [if_pos hc]
+      exact ⟨by rw [← dyadicRight_append_false_eq_left_append_true]; exact hc.le,
+        by rw [dyadicRight_append_true]; exact hr⟩
+    · rw [if_neg hc]
+      exact ⟨by rw [dyadicLeft_append_false]; exact hl, not_lt.mp hc⟩
+
+@[simp] theorem realOf_greedySeq {z : ℝ} (hz : z ∈ Set.Icc (0 : ℝ) 1) :
+    realOf (greedySeq z) = z :=
+  (eq_realOf_of_mem_all_dyadicInterval fun n ↦ by
+    rw [initSeg_greedySeq]; exact mem_dyadicInterval_greedyPrefix hz n).symm
+
+/-- **Surjectivity onto the unit interval.** -/
+theorem exists_realOf_eq {z : ℝ} (hz : z ∈ Set.Icc (0 : ℝ) 1) : ∃ x : Cantor, realOf x = z :=
+  ⟨greedySeq z, realOf_greedySeq hz⟩
+
+theorem range_realOf : Set.range realOf = Set.Icc (0 : ℝ) 1 := by
+  refine Set.Subset.antisymm ?_ fun z hz ↦ ?_
+  · rintro _ ⟨x, rfl⟩
+    exact realOf_mem_unit x
+  · obtain ⟨x, hx⟩ := exists_realOf_eq hz
+    exact ⟨x, hx⟩
+
+/-- The unit-interval-valued form, which is a genuine surjection. -/
+noncomputable def realOfUnit (x : Cantor) : Set.Icc (0 : ℝ) 1 := ⟨realOf x, realOf_mem_unit x⟩
+
+@[simp] theorem coe_realOfUnit (x : Cantor) : ((realOfUnit x : Set.Icc (0 : ℝ) 1) : ℝ) = realOf x :=
+  rfl
+
+theorem surjective_realOfUnit : Function.Surjective realOfUnit := by
+  rintro ⟨z, hz⟩
+  obtain ⟨x, hx⟩ := exists_realOf_eq hz
+  exact ⟨x, Subtype.ext hx⟩
+
 end AlgorithmicRandomness

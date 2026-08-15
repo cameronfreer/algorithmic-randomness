@@ -30,12 +30,9 @@ those endpoints, which it does by way of the grid.
 ## Scope
 
 This is the reverse direction of Freer–Kjos-Hanssen–Nies–Stephan (arXiv:1402.2429, Theorem 4.2),
-in *sequence* form: the hypothesis is about a point of Cantor space and the conclusion is about
-`realOf` of it. Two things are deliberately not claimed.
-
-The paper's real-number formulation additionally needs a randomness predicate on reals and a
-bridge in the other direction — that every `z ∈ [0, 1]` is `realOf` of some sequence. Neither is
-here.
+in both sequence form (`exists_computableLipschitz_not_differentiableAt`) and real-number form
+(`exists_computableLipschitz_not_differentiableAt_of_not_randomReal`). The second rests on
+`exists_realOf_eq`: every point of `[0, 1]` has a binary expansion, proved by greedy bisection.
 
 The published theorem is a biconditional, and the forward direction is not here and is not close.
 It reduces a computable Lipschitz `f` to the nondecreasing `g x = f x + c * x` and then invokes
@@ -129,5 +126,45 @@ theorem exists_computableLipschitz_not_differentiableAt {x : Cantor}
   rw [IsComputablyRandom, not_forall] at hx
   obtain ⟨d, hd⟩ := hx
   exact exists_computableLipschitz_not_differentiableAt_of_succeeds (not_not.mp hd)
+
+/-! ## The real-number form
+
+A real is computably random when *some* binary expansion of it is — the paper's formulation.
+Existential rather than universal: a dyadic rational has two expansions and neither is random, so
+the two readings differ only off a countable set, but the existential is what the argument below
+consumes and what the literature means. -/
+
+/-- A real of `[0, 1]` is computably random when it has a computably random expansion. -/
+def IsComputablyRandomReal (z : ℝ) : Prop :=
+  ∃ x : Cantor, realOf x = z ∧ IsComputablyRandom x
+
+theorem IsComputablyRandomReal.mem_unit {z : ℝ} (h : IsComputablyRandomReal z) :
+    z ∈ Set.Icc (0 : ℝ) 1 := by
+  obtain ⟨x, rfl, -⟩ := h
+  exact realOf_mem_unit x
+
+/-- **The reverse direction, in real-number form.** Every non-computably-random real of the unit
+interval is a point of nondifferentiability of some computable Lipschitz function.
+
+The unit-interval hypothesis is not removable and not a defect of the argument: outside `[0, 1]`
+the predicate is vacuously false, since `realOf` lands in `[0, 1]`, while the conclusion is a real
+claim about differentiability there. -/
+theorem exists_computableLipschitz_not_differentiableAt_of_not_randomReal {z : ℝ}
+    (hz : z ∈ Set.Icc (0 : ℝ) 1) (h : ¬IsComputablyRandomReal z) :
+    ∃ f : ComputableLipschitz, ¬DifferentiableAt ℝ f.toFun z := by
+  obtain ⟨x, hx⟩ := exists_realOf_eq hz
+  have hnr : ¬IsComputablyRandom x := fun hcr ↦ h ⟨x, hx, hcr⟩
+  obtain ⟨f, hf⟩ := exists_computableLipschitz_not_differentiableAt hnr
+  exact ⟨f, hx ▸ hf⟩
+
+/-- Contrapositive: a real at which every computable Lipschitz function is differentiable is
+computably random. -/
+theorem isComputablyRandomReal_of_forall_differentiableAt {z : ℝ}
+    (hz : z ∈ Set.Icc (0 : ℝ) 1)
+    (h : ∀ f : ComputableLipschitz, DifferentiableAt ℝ f.toFun z) :
+    IsComputablyRandomReal z := by
+  by_contra hnr
+  obtain ⟨f, hf⟩ := exists_computableLipschitz_not_differentiableAt_of_not_randomReal hz hnr
+  exact hf (h f)
 
 end AlgorithmicRandomness
