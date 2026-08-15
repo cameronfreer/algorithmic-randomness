@@ -130,9 +130,13 @@ theorem exists_computableLipschitz_not_differentiableAt {x : Cantor}
 /-! ## The real-number form
 
 A real is computably random when *some* binary expansion of it is — the paper's formulation.
-Existential rather than universal: a dyadic rational has two expansions and neither is random, so
-the two readings differ only off a countable set, but the existential is what the argument below
-consumes and what the literature means. -/
+
+The existential and universal readings can only come apart where a real has more than one
+expansion, which is at the dyadic rationals; and there both expansions are computable, hence
+neither is computably random, so both readings should call such a real non-random. That is
+motivation for the choice, not a theorem proved here: classifying the fibers of `realOf` is not
+part of this development, and nothing below depends on it. The existential form is what the
+argument consumes. -/
 
 /-- A real of `[0, 1]` is computably random when it has a computably random expansion. -/
 def IsComputablyRandomReal (z : ℝ) : Prop :=
