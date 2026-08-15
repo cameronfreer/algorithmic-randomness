@@ -35,3 +35,4 @@ import AlgorithmicRandomness.Analysis.Lipschitz
 import AlgorithmicRandomness.Analysis.UnitDyadic
 import AlgorithmicRandomness.Analysis.Extension
 import AlgorithmicRandomness.Analysis.CDFProgram
+import AlgorithmicRandomness.Analysis.LipschitzRandomness
