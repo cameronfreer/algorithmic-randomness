@@ -85,11 +85,60 @@ theorem dyadicLeft_lt_dyadicRight (σ : BitString) : dyadicLeft σ < dyadicRight
   rw [dyadicRight]
   linarith [dyadicWidth_pos σ]
 
+/-! ### Nesting
+
+Extending a string shrinks its interval from both ends. These are the generic facts behind every
+"the point stays inside every prefix interval" argument; they are stated for an arbitrary prefix
+rather than for a single extra bit, since that is how they are always used. -/
+
+theorem dyadicLeft_le_append (σ l : BitString) : dyadicLeft σ ≤ dyadicLeft (σ ++ l) := by
+  induction l using List.reverseRecOn with
+  | nil => simp
+  | append_singleton l b ih =>
+    rw [← List.append_assoc, dyadicLeft_append]
+    have hw := dyadicWidth_pos (σ ++ l)
+    cases b <;> simp only [Bool.false_eq_true, if_false, if_true] <;> linarith
+
+theorem dyadicRight_append_le (σ l : BitString) : dyadicRight (σ ++ l) ≤ dyadicRight σ := by
+  induction l using List.reverseRecOn with
+  | nil => simp
+  | append_singleton l b ih =>
+    rw [← List.append_assoc, dyadicRight, dyadicLeft_append, dyadicWidth_append]
+    rw [dyadicRight] at ih
+    have hw := dyadicWidth_pos (σ ++ l)
+    cases b <;> simp only [Bool.false_eq_true, if_false, if_true] <;> linarith
+
+theorem dyadicLeft_mono_of_prefix {σ τ : BitString} (h : σ <+: τ) :
+    dyadicLeft σ ≤ dyadicLeft τ := by
+  obtain ⟨l, rfl⟩ := h
+  exact dyadicLeft_le_append σ l
+
+theorem dyadicRight_anti_of_prefix {σ τ : BitString} (h : σ <+: τ) :
+    dyadicRight τ ≤ dyadicRight σ := by
+  obtain ⟨l, rfl⟩ := h
+  exact dyadicRight_append_le σ l
+
+theorem dyadicLeft_nonneg (σ : BitString) : 0 ≤ dyadicLeft σ := by
+  simpa using dyadicLeft_mono_of_prefix (List.nil_prefix (l := σ))
+
+theorem dyadicRight_le_one (σ : BitString) : dyadicRight σ ≤ 1 := by
+  simpa using dyadicRight_anti_of_prefix (List.nil_prefix (l := σ))
+
+theorem dyadicLeft_le_one (σ : BitString) : dyadicLeft σ ≤ 1 :=
+  (dyadicLeft_lt_dyadicRight σ).le.trans (dyadicRight_le_one σ)
+
 /-- Half-open cells, which partition. -/
 def dyadicCell (σ : BitString) : Set ℝ := Set.Ico (dyadicLeft σ) (dyadicRight σ)
 
 /-- Closed intervals, across which chords are taken. -/
 def dyadicInterval (σ : BitString) : Set ℝ := Set.Icc (dyadicLeft σ) (dyadicRight σ)
+
+theorem dyadicInterval_subset_of_prefix {σ τ : BitString} (h : σ <+: τ) :
+    dyadicInterval τ ⊆ dyadicInterval σ :=
+  Set.Icc_subset_Icc (dyadicLeft_mono_of_prefix h) (dyadicRight_anti_of_prefix h)
+
+theorem dyadicInterval_subset_unit (σ : BitString) : dyadicInterval σ ⊆ Set.Icc (0 : ℝ) 1 := by
+  simpa [dyadicInterval] using dyadicInterval_subset_of_prefix (List.nil_prefix (l := σ))
 
 /-! ## The cumulative endpoint function -/
 
