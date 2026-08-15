@@ -83,6 +83,48 @@ theorem describes_unique {c : Code} {σ τ τ' : BitString} (h : Describes c σ 
 /-- A machine is prefix-free when its domain is. -/
 def IsPrefixFreeMachine (c : Code) : Prop := PrefixFree (machineDomain c)
 
+/-! ### The staged description relation
+
+`Describes` is a `Part` equation; every finite-approximation argument wants membership instead, so
+that `evaln_sound` and `evaln_complete` apply without touching `Part` internals. -/
+
+theorem describes_iff_mem {c : Code} {p τ : BitString} :
+    Describes c p τ ↔ Encodable.encode τ ∈ c.eval (Encodable.encode p) :=
+  Part.eq_some_iff
+
+/-- `c` maps `p` to `τ` within fuel `s`: a decidable, primitive recursive finite witness for
+`Describes`. This is the relation the complexity approximations are built from. -/
+def DescribesAt (c : Code) (s : ℕ) (p τ : BitString) : Bool :=
+  decide (Code.evaln s c (Encodable.encode p) = some (Encodable.encode τ))
+
+theorem describesAt_iff {c : Code} {s : ℕ} {p τ : BitString} :
+    DescribesAt c s p τ = true ↔
+      Code.evaln s c (Encodable.encode p) = some (Encodable.encode τ) := by
+  rw [DescribesAt, decide_eq_true_iff]
+
+theorem describesAt_mono {c : Code} {s t : ℕ} {p τ : BitString} (h : s ≤ t)
+    (hs : DescribesAt c s p τ = true) : DescribesAt c t p τ = true :=
+  describesAt_iff.mpr (evaln_mono h (describesAt_iff.mp hs))
+
+theorem describes_of_describesAt {c : Code} {s : ℕ} {p τ : BitString}
+    (h : DescribesAt c s p τ = true) : Describes c p τ :=
+  describes_iff_mem.mpr (evaln_sound (describesAt_iff.mp h))
+
+theorem exists_describesAt {c : Code} {p τ : BitString} (h : Describes c p τ) :
+    ∃ s, DescribesAt c s p τ = true := by
+  obtain ⟨s, hs⟩ := evaln_complete.mp (describes_iff_mem.mp h)
+  exact ⟨s, describesAt_iff.mpr hs⟩
+
+theorem primrec_describesAt :
+    Primrec fun z : (Code × ℕ) × (BitString × BitString) ↦
+      DescribesAt z.1.1 z.1.2 z.2.1 z.2.2 := by
+  unfold DescribesAt
+  refine primrecPred_iff_primrec_decide.mp (Primrec.eq.comp ?_ ?_)
+  · exact Code.primrec_evaln.comp
+      (((Primrec.snd.comp Primrec.fst).pair (Primrec.fst.comp Primrec.fst)).pair
+        (Primrec.encode.comp (Primrec.fst.comp Primrec.snd)))
+  · exact Primrec.option_some.comp (Primrec.encode.comp (Primrec.snd.comp Primrec.snd))
+
 /-! ## Executable stages
 
 The same shape as the discovery chronology behind trimming: each stage recomputes with more fuel,
