@@ -533,4 +533,21 @@ theorem describes_sanitizeCode_of_prefixFree {c : Code} (h : IsPrefixFreeMachine
 
 end PrefixMachine
 
+/-! ## Bundled prefix-free machines
+
+Prefix-freeness is carried as asserted data alongside the code, never claimed to be effectively
+decidable — the same discipline as totality in `NatFunctionCode`, and for the same reason: the
+sanitizer exists precisely because the property cannot be tested. -/
+
+/-- A code together with the proof that it is a prefix-free machine. -/
+structure PrefixFreeMachine where
+  /-- The program. -/
+  program : Nat.Partrec.Code
+  /-- The asserted prefix-freeness of its domain. -/
+  prefixFree : PrefixMachine.IsPrefixFreeMachine program
+
+/-- Every code sanitizes to a bundled machine. -/
+noncomputable def PrefixFreeMachine.ofCode (c : Nat.Partrec.Code) : PrefixFreeMachine :=
+  ⟨PrefixMachine.sanitizeCode c, PrefixMachine.isPrefixFreeMachine_sanitizeCode c⟩
+
 end AlgorithmicRandomness
