@@ -378,6 +378,181 @@ theorem primrec_capWeightCode : Primrec₂ capWeightCode := by
   exact Primrec.nat_sub.comp
     ((Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) hlen) (Primrec.const 1)
 
+/-! ## The finite-open difference
+
+The fresh part of an increasing pair of finite open sets, as an explicit prefix-free family. This
+is what an append-only accounting must emit: successive *minimized* stages cannot be compared
+directly, because a shorter cylinder can replace earlier longer ones and the historical weights
+then overcount.
+
+The construction refines every member of `new` to the common length `maxLen (new ++ old)` and
+keeps the extensions not already covered by `old`. At one fixed length the covering dichotomy is
+exact — a member of `old` is a prefix of a point of `[ρ]` exactly when it is a prefix of `ρ` — and
+prefix-freeness is automatic, since distinct strings of equal length are incomparable.
+
+The result is not minimal, and can be exponentially larger than necessary. Nothing downstream asks
+for minimality: what is needed is the exact weight identity below, and refinement is what makes
+every step a membership computation rather than a normal-form argument.
+-/
+
+/-- All extensions of `σ` to length `L`. -/
+def extendTo (L : ℕ) (σ : BitString) : List BitString :=
+  (BitString.wordsOfLength (L - σ.length)).map (σ ++ ·)
+
+theorem mem_extendTo {L : ℕ} {σ ρ : BitString} (h : σ.length ≤ L) :
+    ρ ∈ extendTo L σ ↔ σ <+: ρ ∧ ρ.length = L := by
+  rw [extendTo, List.mem_map]
+  constructor
+  · rintro ⟨w, hw, rfl⟩
+    refine ⟨⟨w, rfl⟩, ?_⟩
+    rw [List.length_append, BitString.length_of_mem_wordsOfLength hw]
+    omega
+  · rintro ⟨⟨w, rfl⟩, hlen⟩
+    refine ⟨w, ?_, rfl⟩
+    rw [List.length_append] at hlen
+    have : w.length = L - σ.length := by omega
+    rw [← this]
+    exact BitString.mem_wordsOfLength_length w
+
+/-- Some member of `L` is a prefix of `ρ`. -/
+def coveredBy (L : List BitString) (ρ : BitString) : Bool :=
+  L.foldr (fun σ b ↦ b || prefixB σ ρ) false
+
+theorem coveredBy_iff {L : List BitString} {ρ : BitString} :
+    coveredBy L ρ = true ↔ ∃ σ ∈ L, σ <+: ρ := by
+  rw [coveredBy]
+  induction L with
+  | nil => simp
+  | cons μ L ih =>
+    rw [List.foldr_cons]
+    simp only [Bool.or_eq_true, ih, prefixB_iff, List.mem_cons]
+    constructor
+    · rintro (⟨σ, hσ, hp⟩ | hp)
+      · exact ⟨σ, Or.inr hσ, hp⟩
+      · exact ⟨μ, Or.inl rfl, hp⟩
+    · rintro ⟨σ, rfl | hσ, hp⟩
+      · exact Or.inr hp
+      · exact Or.inl ⟨σ, hσ, hp⟩
+
+/-- The fresh part of `new` beyond `old`: a prefix-free family at one common length. -/
+def difference (new old : List BitString) : List BitString :=
+  (new.flatMap (extendTo (maxLen (new ++ old)))).filterMap fun ρ ↦
+    if coveredBy old ρ then none else some ρ
+
+theorem mem_difference {new old : List BitString} {ρ : BitString} :
+    ρ ∈ difference new old ↔
+      (∃ σ ∈ new, σ <+: ρ) ∧ ρ.length = maxLen (new ++ old) ∧ coveredBy old ρ = false := by
+  rw [difference, List.mem_filterMap]
+  constructor
+  · rintro ⟨μ, hμ, hsome⟩
+    by_cases hc : coveredBy old μ = true
+    · rw [if_pos hc] at hsome; exact absurd hsome (by simp)
+    · rw [if_neg hc, Option.some_inj] at hsome
+      subst hsome
+      rw [List.mem_flatMap] at hμ
+      obtain ⟨σ, hσ, hmem⟩ := hμ
+      obtain ⟨hpre, hlen⟩ := (mem_extendTo (length_le_maxLen (by simp [hσ]))).mp hmem
+      exact ⟨⟨σ, hσ, hpre⟩, hlen, by simpa using hc⟩
+  · rintro ⟨⟨σ, hσ, hpre⟩, hlen, hc⟩
+    refine ⟨ρ, List.mem_flatMap.mpr ⟨σ, hσ, ?_⟩, by rw [if_neg (by simp [hc])]⟩
+    exact (mem_extendTo (length_le_maxLen (by simp [hσ]))).mpr ⟨hpre, hlen⟩
+
+theorem length_of_mem_difference {new old : List BitString} {ρ : BitString}
+    (h : ρ ∈ difference new old) : ρ.length = maxLen (new ++ old) := (mem_difference.mp h).2.1
+
+/-- **Prefix-free**, because everything emitted sits at one length. -/
+theorem prefixFree_difference (new old : List BitString) :
+    PrefixFree ((difference new old).toFinset : Set BitString) := by
+  rw [prefixFree_iff]
+  intro σ hσ τ hτ hpre
+  rw [Finset.mem_coe, List.mem_toFinset] at hσ hτ
+  exact hpre.eq_of_length
+    ((length_of_mem_difference hσ).trans (length_of_mem_difference hτ).symm)
+
+/-- **The semantic contract.** -/
+theorem cylinderUnion_difference (new old : List BitString) :
+    cylinderUnion (difference new old).toFinset
+      = cylinderUnion new.toFinset \ cylinderUnion old.toFinset := by
+  ext x
+  rw [mem_cylinderUnion, Set.mem_sdiff, mem_cylinderUnion, mem_cylinderUnion]
+  constructor
+  · rintro ⟨ρ, hρ, hx⟩
+    rw [List.mem_toFinset] at hρ
+    obtain ⟨⟨σ, hσ, hpre⟩, hlen, hc⟩ := mem_difference.mp hρ
+    refine ⟨⟨σ, List.mem_toFinset.mpr hσ, cylinder_subset_cylinder_iff.mpr hpre hx⟩, ?_⟩
+    rintro ⟨τ, hτ, hxτ⟩
+    rw [List.mem_toFinset] at hτ
+    have hτL : τ.length ≤ ρ.length := by
+      rw [hlen]
+      exact length_le_maxLen (by simp [hτ])
+    have hτρ : τ <+: ρ := by
+      rw [← initSeg_of_mem_cylinder hx, ← initSeg_of_mem_cylinder hxτ]
+      exact initSeg_prefix_of_le hτL
+    rw [← Bool.not_eq_true] at hc
+    exact hc (coveredBy_iff.mpr ⟨τ, hτ, hτρ⟩)
+  · rintro ⟨⟨σ, hσ, hx⟩, hnot⟩
+    rw [List.mem_toFinset] at hσ
+    set L := maxLen (new ++ old) with hL
+    have hσL : σ.length ≤ L := length_le_maxLen (by simp [hσ])
+    refine ⟨initSeg x L, List.mem_toFinset.mpr (mem_difference.mpr ⟨⟨σ, hσ, ?_⟩, ?_, ?_⟩),
+      mem_cylinder_initSeg x L⟩
+    · rw [← initSeg_of_mem_cylinder hx]
+      exact initSeg_prefix_of_le hσL
+    · exact length_initSeg x L
+    · rw [← Bool.not_eq_true, ← ne_eq]
+      intro hc
+      obtain ⟨τ, hτ, hτρ⟩ := coveredBy_iff.mp hc
+      exact hnot ⟨τ, List.mem_toFinset.mpr hτ,
+        cylinder_subset_cylinder_iff.mpr hτρ (mem_cylinder_initSeg x L)⟩
+
+/-- **The weight identity.** The old set and the fresh part are disjoint and cover the new set, so
+their exact rational weights add. -/
+theorem weight_add_difference {new old : List BitString}
+    (h : cylinderUnion old.toFinset ⊆ cylinderUnion new.toFinset) :
+    finiteOpenWeight old.toFinset + totalWeight (difference new old).toFinset
+      = finiteOpenWeight new.toFinset := by
+  have hdisj : Disjoint (cylinderUnion old.toFinset)
+      (cylinderUnion (difference new old).toFinset) := by
+    rw [cylinderUnion_difference]
+    exact Set.disjoint_sdiff_right
+  have hunion : cylinderUnion old.toFinset ∪ cylinderUnion (difference new old).toFinset
+      = cylinderUnion new.toFinset := by
+    rw [cylinderUnion_difference, Set.union_sdiff_cancel h]
+  have hmeas : fairCoin (cylinderUnion old.toFinset)
+      + fairCoin (cylinderUnion (difference new old).toFinset)
+      = fairCoin (cylinderUnion new.toFinset) := by
+    rw [← hunion, measure_union hdisj (measurableSet_cylinderUnion _)]
+  rw [fairCoin_cylinderUnion old.toFinset, fairCoin_cylinderUnion new.toFinset,
+    fairCoin_cylinderUnion_of_prefixFree (prefixFree_difference new old)] at hmeas
+  rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast,
+    ← ENNReal.coe_add] at hmeas
+  exact_mod_cast hmeas
+
+theorem primrec_extendTo : Primrec₂ extendTo := by
+  refine Primrec.list_map
+    (BitString.primrec_wordsOfLength.comp
+      (Primrec.nat_sub.comp Primrec.fst (Primrec.list_length.comp Primrec.snd))) ?_
+  exact (Primrec.list_append.comp (Primrec.snd.comp Primrec.fst) Primrec.snd).to₂
+
+theorem primrec_coveredBy : Primrec₂ coveredBy := by
+  have h : Primrec₂ fun (z : List BitString × BitString) (p : BitString × Bool) ↦
+      p.2 || prefixB p.1 z.2 :=
+    (Primrec.or.comp (Primrec.snd.comp Primrec.snd)
+      (primrec_prefixB.comp (Primrec.fst.comp Primrec.snd) (Primrec.snd.comp Primrec.fst))).to₂
+  exact Primrec.list_foldr Primrec.fst
+    (Primrec.const (α := List BitString × BitString) false) h
+
+theorem primrec_difference : Primrec₂ difference := by
+  have hlen : Primrec fun z : List BitString × List BitString ↦ maxLen (z.1 ++ z.2) :=
+    primrec_maxLen.comp (Primrec.list_append.comp Primrec.fst Primrec.snd)
+  refine Primrec.listFilterMap
+    (Primrec.list_flatMap Primrec.fst
+      ((primrec_extendTo.comp (hlen.comp Primrec.fst) Primrec.snd).to₂)) ?_
+  refine Primrec.ite
+    (Primrec.eq.comp (primrec_coveredBy.comp (Primrec.snd.comp Primrec.fst) Primrec.snd)
+      (Primrec.const true))
+    (Primrec.const none) (Primrec.option_some.comp Primrec.snd)
+
 end FiniteOpenCode
 
 end AlgorithmicRandomness
