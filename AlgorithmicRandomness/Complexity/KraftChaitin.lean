@@ -201,4 +201,75 @@ theorem pairwise_descend (σ : BitString) (k : ℕ) :
       subst hb
       exact hall a (List.mem_cons_of_mem _ ha)
 
+/-! ## The geometric tail, and slot availability
+
+Distinct lengths all at least `m` carry total weight strictly below `2 · 2⁻ᵐ`. The induction runs
+on the *increasing* list, peeling the smallest: the tail is then bounded by `2 · 2⁻⁽ˡ⁺¹⁾ = 2⁻ˡ`,
+which is exactly the head's own weight. Peeling the largest instead gives a bound weaker by a
+factor of three and does not close. -/
+
+def weightSum (lengths : List ℕ) : ℚ≥0 := (lengths.map fun l ↦ (2⁻¹ : ℚ≥0) ^ l).sum
+
+@[simp] theorem weightSum_nil : weightSum [] = 0 := rfl
+
+@[simp] theorem weightSum_cons (l : ℕ) (L : List ℕ) :
+    weightSum (l :: L) = (2⁻¹ : ℚ≥0) ^ l + weightSum L := rfl
+
+theorem weightSum_reverse (L : List ℕ) : weightSum L.reverse = weightSum L := by
+  rw [weightSum, weightSum, List.map_reverse, List.sum_reverse]
+
+theorem listWeight_eq_weightSum (L : List BitString) :
+    listWeight L = weightSum (L.map List.length) := by
+  rw [listWeight, weightSum, List.map_map]
+  rfl
+
+/-- The doubling identity, named because symbolic powers do not survive `ring` when the exponent
+is a variable, and the `2 * ·` form drags in instance search that times out on `ℚ≥0`. Stated
+additively for that reason. -/
+theorem pow_succ_add_pow_succ (l : ℕ) :
+    (2⁻¹ : ℚ≥0) ^ (l + 1) + (2⁻¹ : ℚ≥0) ^ (l + 1) = (2⁻¹ : ℚ≥0) ^ l := by
+  rw [pow_succ, ← mul_add]
+  norm_num
+
+theorem weightSum_lt_add_self : ∀ {L : List ℕ} {m : ℕ}, L.Pairwise (· < ·) →
+    (∀ l ∈ L, m ≤ l) → weightSum L < (2⁻¹ : ℚ≥0) ^ m + (2⁻¹ : ℚ≥0) ^ m := by
+  intro L
+  induction L with
+  | nil =>
+    intro m _ _
+    rw [weightSum_nil]
+    have hpos : (0 : ℚ≥0) < (2⁻¹ : ℚ≥0) ^ m := by positivity
+    calc (0 : ℚ≥0) < (2⁻¹ : ℚ≥0) ^ m := hpos
+      _ ≤ (2⁻¹ : ℚ≥0) ^ m + (2⁻¹ : ℚ≥0) ^ m := le_add_self
+  | cons l L ih =>
+    intro m hinc hmin
+    rw [List.pairwise_cons] at hinc
+    have htail := ih hinc.2 fun l' hl' ↦ hinc.1 l' hl'
+    rw [pow_succ_add_pow_succ] at htail
+    have hml : (2⁻¹ : ℚ≥0) ^ l ≤ (2⁻¹ : ℚ≥0) ^ m :=
+      pow_le_pow_of_le_one (by norm_num) (by norm_num) (hmin l List.mem_cons_self)
+    calc weightSum (l :: L) = (2⁻¹ : ℚ≥0) ^ l + weightSum L := weightSum_cons l L
+      _ < (2⁻¹ : ℚ≥0) ^ l + (2⁻¹ : ℚ≥0) ^ l :=
+        add_lt_add_of_le_of_lt le_rfl htail
+      _ ≤ (2⁻¹ : ℚ≥0) ^ m + (2⁻¹ : ℚ≥0) ^ m := add_le_add hml hml
+
+/-- **Availability.** A free list with strictly decreasing lengths carrying at least `2⁻ⁿ` of mass
+must contain a slot of length at most `n`. -/
+theorem exists_adequate_slot {free : List BitString} {n : ℕ}
+    (hsort : (free.map List.length).Pairwise (· > ·))
+    (hmass : (2⁻¹ : ℚ≥0) ^ n ≤ listWeight free) :
+    ∃ σ ∈ free, σ.length ≤ n := by
+  by_contra hno
+  push Not at hno
+  have hmin : ∀ l ∈ (free.map List.length).reverse, n + 1 ≤ l := by
+    intro l hl
+    rw [List.mem_reverse, List.mem_map] at hl
+    obtain ⟨σ, hσ, rfl⟩ := hl
+    exact hno σ hσ
+  have hlt : weightSum (free.map List.length).reverse
+      < (2⁻¹ : ℚ≥0) ^ (n + 1) + (2⁻¹ : ℚ≥0) ^ (n + 1) :=
+    weightSum_lt_add_self (List.pairwise_reverse.mpr hsort) hmin
+  rw [pow_succ_add_pow_succ, weightSum_reverse, ← listWeight_eq_weightSum] at hlt
+  exact absurd hmass (not_le.mpr hlt)
+
 end AlgorithmicRandomness
