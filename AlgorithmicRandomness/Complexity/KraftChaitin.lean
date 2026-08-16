@@ -774,4 +774,350 @@ theorem primrec_allocFrom : Primrec₂ allocFrom := by
 theorem primrec_allocate : Primrec allocate :=
   primrec_allocFrom.comp (Primrec.const initState) Primrec.id
 
+/-! ## Prefix stability of the allocation
+
+Allocation is a deterministic fold and `allocStep` only ever appends one assignment, so growing
+the request list can only extend the assignment list. That is what makes the eventual machine's
+lookup stable, and it replaces what would otherwise be a combinatorial argument about the machine
+domain. -/
+
+private theorem someBind {α β : Type} (a : α) (f : α → Option β) : (some a).bind f = f a := rfl
+
+theorem allocFrom_append (st : AllocationState) (rs ss : List KraftRequest) :
+    allocFrom st (rs ++ ss) = (allocFrom st rs).bind fun s ↦ allocFrom s ss := by
+  induction rs generalizing st with
+  | nil => rw [List.nil_append, allocFrom_nil, someBind]
+  | cons r rs ih =>
+    rw [List.cons_append, allocFrom_cons, allocFrom_cons]
+    cases h : allocStep st r with
+    | none => simp [Option.bind_none]
+    | some s' => rw [someBind, someBind, ih]
+
+theorem assigned_prefix_allocStep {st st' : AllocationState} {r : KraftRequest}
+    (h : allocStep st r = some st') : st.assigned <+: st'.assigned := by
+  rw [allocStep, Option.map_eq_some_iff] at h
+  obtain ⟨t, -, rfl⟩ := h
+  exact ⟨_, rfl⟩
+
+theorem assigned_prefix_allocFrom : ∀ {rs : List KraftRequest} {st st' : AllocationState},
+    allocFrom st rs = some st' → st.assigned <+: st'.assigned := by
+  intro rs
+  induction rs with
+  | nil => intro st st' h; rw [allocFrom_nil, Option.some_inj] at h; rw [h]
+  | cons r rs ih =>
+    intro st st' h
+    rw [allocFrom_cons] at h
+    cases hs : allocStep st r with
+    | none => rw [hs, Option.bind_none] at h; exact absurd h (by simp)
+    | some s' =>
+      rw [hs, someBind] at h
+      exact (assigned_prefix_allocStep hs).trans (ih h)
+
+theorem allocate_append (rs ss : List KraftRequest) :
+    allocate (rs ++ ss) = (allocate rs).bind fun s ↦ allocFrom s ss :=
+  allocFrom_append initState rs ss
+
+/-! ## Request traces -/
+
+/-- A computably enumerable, append-only stream of requests staying inside the Kraft budget. -/
+structure KraftRequestTrace where
+  /-- The cumulative request list at each stage. -/
+  stage : ℕ → List KraftRequest
+  /-- Requests are only ever appended. -/
+  stage_prefix : ∀ {s t : ℕ}, s ≤ t → stage s <+: stage t
+  /-- The stream is computable. -/
+  primrec_stage : Primrec stage
+  /-- Every stage stays inside the budget. -/
+  weight_le : ∀ s, totalRequestWeight (stage s) ≤ 1
+
+namespace KraftRequestTrace
+
+variable (R : KraftRequestTrace)
+
+/-- The allocator state after stage `s`. The default is unreachable, by `allocate_stage`. -/
+def allocStage (s : ℕ) : AllocationState := (allocate (R.stage s)).getD initState
+
+theorem allocate_stage (s : ℕ) : allocate (R.stage s) = some (R.allocStage s) := by
+  obtain ⟨st, hst, -⟩ := allocate_complete (R.weight_le s)
+  rw [allocStage, hst, Option.getD_some]
+
+theorem invariant_allocStage (s : ℕ) :
+    AllocationState.Invariant (R.stage s) (R.allocStage s) := by
+  obtain ⟨st, hst, hI⟩ := allocate_complete (R.weight_le s)
+  have heq : R.allocStage s = st := by rw [allocStage, hst, Option.getD_some]
+  rw [heq]
+  exact hI
+
+/-- The assignments in force at stage `s`. -/
+def assignmentsStage (s : ℕ) : List Assignment := (R.allocStage s).assigned
+
+variable {R}
+
+/-- **Assignment-prefix stability.** -/
+theorem assignmentsStage_prefix {s t : ℕ} (hst : s ≤ t) :
+    R.assignmentsStage s <+: R.assignmentsStage t := by
+  obtain ⟨l, hl⟩ := R.stage_prefix hst
+  have hA : allocate (R.stage t) = allocFrom (R.allocStage s) l := by
+    rw [← hl, allocate_append, allocate_stage R s, someBind]
+  rw [allocate_stage R t] at hA
+  exact assigned_prefix_allocFrom hA.symm
+
+/-- Codewords in force at a stage are distinct, since incompatibility is irreflexive. -/
+theorem nodup_codewords (R : KraftRequestTrace) (s : ℕ) :
+    ((R.assignmentsStage s).map Assignment.codeword).Nodup := by
+  have h := (R.invariant_allocStage s).incompat
+  rw [List.pairwise_append] at h
+  refine List.Pairwise.imp ?_ h.1
+  intro a b hab heq
+  subst heq
+  exact hab (Or.inl (List.prefix_refl a))
+
+end KraftRequestTrace
+
+/-! ## Assignment lookup
+
+A fold rather than `List.find`, whose mathlib API is not parameterized in the sought value. The
+leftmost match wins, which is what makes lookup stable under extension. -/
+
+def lookupAssignment (p : BitString) (A : List Assignment) : Option BitString :=
+  A.foldr (fun a acc ↦ if a.codeword = p then some a.output else acc) none
+
+@[simp] theorem lookupAssignment_nil (p : BitString) : lookupAssignment p [] = none := rfl
+
+theorem lookupAssignment_cons (p : BitString) (a : Assignment) (A : List Assignment) :
+    lookupAssignment p (a :: A)
+      = if a.codeword = p then some a.output else lookupAssignment p A := rfl
+
+theorem exists_of_lookupAssignment : ∀ {A : List Assignment} {p τ : BitString},
+    lookupAssignment p A = some τ → ∃ a ∈ A, a.codeword = p ∧ a.output = τ := by
+  intro A
+  induction A with
+  | nil => intro p τ h; rw [lookupAssignment_nil] at h; exact absurd h (by simp)
+  | cons a A ih =>
+    intro p τ h
+    rw [lookupAssignment_cons] at h
+    by_cases hc : a.codeword = p
+    · rw [if_pos hc, Option.some_inj] at h
+      exact ⟨a, List.mem_cons_self, hc, h⟩
+    · rw [if_neg hc] at h
+      obtain ⟨b, hb, hbc, hbo⟩ := ih h
+      exact ⟨b, List.mem_cons_of_mem a hb, hbc, hbo⟩
+
+/-- A fold that has already succeeded ignores its starting value. -/
+private theorem lookupFoldr_of_eq_some : ∀ {A : List Assignment} {p τ : BitString}
+    (x : Option BitString), lookupAssignment p A = some τ →
+    A.foldr (fun a acc ↦ if a.codeword = p then some a.output else acc) x = some τ := by
+  intro A
+  induction A with
+  | nil => intro p τ x h; rw [lookupAssignment_nil] at h; exact absurd h (by simp)
+  | cons a A ih =>
+    intro p τ x h
+    rw [lookupAssignment_cons] at h
+    by_cases hc : a.codeword = p
+    · rw [List.foldr_cons, if_pos hc]; rwa [if_pos hc] at h
+    · rw [List.foldr_cons, if_neg hc]; rw [if_neg hc] at h; exact ih x h
+
+/-- **Lookup is stable under extension.** -/
+theorem lookupAssignment_prefix {p τ : BitString} {A B : List Assignment} (h : A <+: B)
+    (hA : lookupAssignment p A = some τ) : lookupAssignment p B = some τ := by
+  obtain ⟨l, rfl⟩ := h
+  rw [lookupAssignment, List.foldr_append]
+  exact lookupFoldr_of_eq_some _ hA
+
+/-- With distinct codewords, lookup returns the assignment's own output. -/
+theorem lookupAssignment_of_mem : ∀ {A : List Assignment} {a : Assignment}, a ∈ A →
+    (A.map Assignment.codeword).Nodup → lookupAssignment a.codeword A = some a.output := by
+  intro A
+  induction A with
+  | nil => intro a ha; exact absurd ha (by simp)
+  | cons b A ih =>
+    intro a ha hnd
+    rw [List.map_cons, List.nodup_cons] at hnd
+    rw [lookupAssignment_cons]
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · rw [if_pos rfl]
+    · by_cases hc : b.codeword = a.codeword
+      · exact absurd (hc ▸ List.mem_map_of_mem ha') hnd.1
+      · rw [if_neg hc]; exact ih ha' hnd.2
+
+theorem primrec_lookupAssignment : Primrec₂ lookupAssignment := by
+  have hstep : Primrec₂ fun (p : BitString × List Assignment) (q : Assignment × Option BitString) ↦
+      (if q.1.codeword = p.1 then some q.1.output else q.2) := by
+    refine Primrec.ite
+      (Primrec.eq.comp (primrec_assignment_codeword.comp (Primrec.fst.comp Primrec.snd))
+        (Primrec.fst.comp Primrec.fst))
+      (Primrec.option_some.comp (primrec_assignment_output.comp (Primrec.fst.comp Primrec.snd)))
+      (Primrec.snd.comp Primrec.snd)
+  exact Primrec.list_foldr Primrec.snd (Primrec.const none) hstep
+
+/-- Symmetric extraction from a pairwise list, since `List.Pairwise.forall` wants a `Std.Symm`
+instance rather than a symmetry proof. -/
+private theorem pairwise_incompat_pair : ∀ {l : List BitString},
+    (l.Pairwise fun a b ↦ ¬BitString.Compatible a b) → ∀ {a b : BitString}, a ∈ l → b ∈ l →
+    a ≠ b → ¬BitString.Compatible a b := by
+  intro l
+  induction l with
+  | nil => intro _ a b ha; exact absurd ha (by simp)
+  | cons c l ih =>
+    intro h a b ha hb hne
+    rw [List.pairwise_cons] at h
+    rcases List.mem_cons.mp ha with rfl | ha' <;> rcases List.mem_cons.mp hb with rfl | hb'
+    · exact absurd rfl hne
+    · exact h.1 b hb'
+    · exact not_compatible_symm (h.1 a ha')
+    · exact ih h.2 ha' hb' hne
+
+/-! ## The machine
+
+Search for a stage at which the input has been assigned, then emit the stored output. Prefix
+stability makes the answer independent of which stage is found, so the least one — which is what
+`Nat.rfind` returns — is as good as any. -/
+
+namespace KraftRequestTrace
+
+variable (R : KraftRequestTrace)
+
+theorem primrec_assignmentsStage : Primrec R.assignmentsStage :=
+  primrec_allocationState_assigned.comp
+    (Primrec.option_getD.comp (primrec_allocate.comp R.primrec_stage) (Primrec.const initState))
+
+noncomputable def machineEval (m : ℕ) : Part ℕ :=
+  (Part.ofOption (canonicalBitString m)).bind fun p ↦
+    (Nat.rfind fun s ↦ Part.some ((lookupAssignment p (R.assignmentsStage s)).isSome)).map
+      fun s ↦ Encodable.encode ((lookupAssignment p (R.assignmentsStage s)).getD [])
+
+theorem partrec_machineEval : Nat.Partrec R.machineEval := by
+  have hlook : Primrec fun w : (ℕ × BitString) × ℕ ↦
+      lookupAssignment w.1.2 (R.assignmentsStage w.2) :=
+    primrec_lookupAssignment.comp (Primrec.snd.comp Primrec.fst)
+      (R.primrec_assignmentsStage.comp Primrec.snd)
+  refine Partrec.nat_iff.mp (Partrec.bind (Computable.ofOption ?_) ?_)
+  · exact primrec_canonicalBitString.to_comp
+  · refine Partrec.map (Partrec.rfind ?_) ?_
+    · exact Computable₂.partrec₂
+        (Computable.to₂ (Primrec.option_isSome.comp hlook).to_comp)
+    · exact (Primrec.encode.comp (Primrec.option_getD.comp hlook (Primrec.const []))).to_comp.to₂
+
+noncomputable def machineCode : Nat.Partrec.Code :=
+  (Nat.Partrec.Code.exists_code.mp R.partrec_machineEval).choose
+
+theorem eval_machineCode : R.machineCode.eval = R.machineEval :=
+  (Nat.Partrec.Code.exists_code.mp R.partrec_machineEval).choose_spec
+
+/-- **The semantic seam.** Everything below is derived from this. -/
+theorem describes_machineCode_iff (p τ : BitString) :
+    PrefixMachine.Describes R.machineCode p τ ↔
+      ∃ s, ∃ a ∈ R.assignmentsStage s, a.codeword = p ∧ a.output = τ := by
+  rw [PrefixMachine.Describes, eval_machineCode, machineEval, canonicalBitString_encode]
+  constructor
+  · intro h
+    rw [Part.coe_some, Part.bind_some, Part.eq_some_iff, Part.mem_map_iff] at h
+    obtain ⟨s, hs, henc⟩ := h
+    have hsome : (lookupAssignment p (R.assignmentsStage s)).isSome := by
+      simpa using Nat.rfind_spec hs
+    obtain ⟨υ, hυ⟩ := Option.isSome_iff_exists.mp hsome
+    rw [hυ, Option.getD_some] at henc
+    obtain ⟨a, ha, hac, hao⟩ := exists_of_lookupAssignment hυ
+    exact ⟨s, a, ha, hac, hao.trans (Encodable.encode_injective henc)⟩
+  · rintro ⟨s, a, ha, rfl, rfl⟩
+    have hlook : lookupAssignment a.codeword (R.assignmentsStage s) = some a.output :=
+      lookupAssignment_of_mem ha (R.nodup_codewords s)
+    obtain ⟨n, hn, -⟩ := Nat.rfind_min'
+      (p := fun t ↦ (lookupAssignment a.codeword (R.assignmentsStage t)).isSome)
+      (by rw [hlook]; rfl)
+    have hsome : (lookupAssignment a.codeword (R.assignmentsStage n)).isSome := by
+      simpa using Nat.rfind_spec hn
+    obtain ⟨υ, hυ⟩ := Option.isSome_iff_exists.mp hsome
+    obtain ⟨b, hb, hbc, hbo⟩ := exists_of_lookupAssignment hυ
+    have hstable : lookupAssignment a.codeword (R.assignmentsStage (max s n)) = some a.output :=
+      lookupAssignment_prefix (assignmentsStage_prefix (le_max_left s n)) hlook
+    have hstable' : lookupAssignment a.codeword (R.assignmentsStage (max s n)) = some υ :=
+      lookupAssignment_prefix (assignmentsStage_prefix (le_max_right s n)) hυ
+    have hυa : υ = a.output := by
+      rw [hstable] at hstable'
+      exact (Option.some_inj.mp hstable').symm
+    rw [Part.coe_some, Part.bind_some, Part.eq_some_iff, Part.mem_map_iff]
+    exact ⟨n, hn, by rw [hυ, Option.getD_some, hυa]⟩
+
+theorem mem_machineDomain_machineCode_iff (p : BitString) :
+    p ∈ PrefixMachine.machineDomain R.machineCode ↔
+      ∃ s, ∃ a ∈ R.assignmentsStage s, a.codeword = p := by
+  constructor
+  · intro hd
+    obtain ⟨x, hx⟩ := Part.dom_iff_mem.mp hd
+    rw [eval_machineCode, machineEval, canonicalBitString_encode, Part.coe_some, Part.bind_some,
+      Part.mem_map_iff] at hx
+    obtain ⟨s, hs, -⟩ := hx
+    have hsome : (lookupAssignment p (R.assignmentsStage s)).isSome := by
+      simpa using Nat.rfind_spec hs
+    obtain ⟨υ, hυ⟩ := Option.isSome_iff_exists.mp hsome
+    obtain ⟨a, ha, hac, -⟩ := exists_of_lookupAssignment hυ
+    exact ⟨s, a, ha, hac⟩
+  · rintro ⟨s, a, ha, rfl⟩
+    exact ((describes_machineCode_iff R a.codeword a.output).mpr
+      ⟨s, a, ha, rfl, rfl⟩).mem_machineDomain
+
+/-- **Prefix-freeness**: two assigned codewords coexist at the later stage, where the allocation
+invariant puts them in one pairwise-incompatible list. -/
+theorem isPrefixFreeMachine_machineCode :
+    PrefixMachine.IsPrefixFreeMachine R.machineCode := by
+  rw [PrefixMachine.IsPrefixFreeMachine, prefixFree_iff]
+  intro p hp q hq hpre
+  obtain ⟨s, a, ha, rfl⟩ := (mem_machineDomain_machineCode_iff R _).mp hp
+  obtain ⟨t, b, hb, rfl⟩ := (mem_machineDomain_machineCode_iff R _).mp hq
+  have ha' : a ∈ R.assignmentsStage (max s t) :=
+    (assignmentsStage_prefix (le_max_left s t)).subset ha
+  have hb' : b ∈ R.assignmentsStage (max s t) :=
+    (assignmentsStage_prefix (le_max_right s t)).subset hb
+  by_contra hne
+  have hinc := (R.invariant_allocStage (max s t)).incompat
+  rw [List.pairwise_append] at hinc
+  exact pairwise_incompat_pair hinc.1 (List.mem_map_of_mem ha') (List.mem_map_of_mem hb') hne
+    (Or.inl hpre)
+
+noncomputable def machine : PrefixFreeMachine :=
+  ⟨R.machineCode, R.isPrefixFreeMachine_machineCode⟩
+
+/-- **The acceptance theorem.** Every request appearing at some stage is realized by a codeword of
+exactly its requested length. -/
+theorem request_described {r : KraftRequest} {s : ℕ} (h : r ∈ R.stage s) :
+    ∃ p, p.length = r.length ∧ PrefixMachine.Describes R.machine.program p r.output := by
+  have hcorr := (R.invariant_allocStage s).correspond
+  have hmem : (r.length, r.output) ∈ (R.assignmentsStage s).map
+      fun a ↦ (a.codeword.length, a.output) := by
+    rw [assignmentsStage, hcorr]
+    exact List.mem_map_of_mem h
+  rw [List.mem_map] at hmem
+  obtain ⟨a, ha, hEq⟩ := hmem
+  rw [Prod.mk.injEq] at hEq
+  exact ⟨a.codeword, hEq.1, (describes_machineCode_iff R a.codeword r.output).mpr
+    ⟨s, a, ha, rfl, hEq.2⟩⟩
+
+end KraftRequestTrace
+
+/-! ## Executable check
+
+Lengths `3, 2, 1` total `7/8`, so allocation must succeed. This is the exact pattern the
+shortest-adequate-slot rule fails on: after the length-3 request the free lengths are `3, 2, 1`,
+and serving the length-2 request from the length-1 slot would duplicate length `2` and leave
+nothing for the length-1 request. -/
+
+section Examples
+
+set_option linter.hashCommand false
+
+/-- The regression example: three requests whose weights sum to `7/8`. -/
+def exampleRequests : List KraftRequest :=
+  [⟨3, [true]⟩, ⟨2, [false]⟩, ⟨1, [true, true]⟩]
+
+#guard (allocate exampleRequests).isSome
+
+#guard ((allocate exampleRequests).getD initState).assigned.length = 3
+
+-- each codeword has exactly its requested length
+#guard (((allocate exampleRequests).getD initState).assigned.map
+  fun a ↦ a.codeword.length) = [3, 2, 1]
+
+end Examples
+
 end AlgorithmicRandomness
