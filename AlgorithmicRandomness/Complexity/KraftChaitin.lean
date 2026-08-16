@@ -161,6 +161,33 @@ theorem primrec_descend : Primrec₂ descend := by
       (descend_snd_eq z.1 z.2).symm
   exact (Primrec.pair hfst hsnd).of_eq fun z ↦ rfl
 
+/-- Sibling lengths strictly decrease, which is what lets the replacement slot straight into a
+decreasing free list. -/
+theorem pairwise_length_descend_snd (σ : BitString) (k : ℕ) :
+    ((descend σ k).2.map List.length).Pairwise (· > ·) := by
+  rw [descend_snd_eq, List.map_map, List.pairwise_map]
+  refine (List.pairwise_lt_range (n := k)).imp_of_mem ?_
+  intro i j hi hj hij
+  rw [List.mem_range] at hi hj
+  simp only [Function.comp_apply, List.length_append, List.length_replicate,
+    List.length_singleton, gt_iff_lt]
+  omega
+
+/-- Two prefixes of a common string are comparable. -/
+private theorem compatible_of_prefix_common {ρ σ τ : BitString} (hρ : ρ <+: τ) (hσ : σ <+: τ) :
+    BitString.Compatible ρ σ := by
+  rcases le_total ρ.length σ.length with h | h
+  · exact Or.inl (List.prefix_of_prefix_length_le hρ hσ h)
+  · exact Or.inr (List.prefix_of_prefix_length_le hσ hρ h)
+
+/-- **Incompatibility survives refinement.** Anything incompatible with a slot stays incompatible
+with everything below it — the single fact that makes the replacement step structural. -/
+theorem incompatible_of_prefix_right {ρ σ τ : BitString} (hστ : σ <+: τ)
+    (hρσ : ¬BitString.Compatible ρ σ) : ¬BitString.Compatible ρ τ := by
+  rintro (h | h)
+  · exact hρσ (compatible_of_prefix_common h hστ)
+  · exact hρσ (Or.inr (hστ.trans h))
+
 /-- **The splitting weight identity.** -/
 theorem weight_descend (σ : BitString) (k : ℕ) :
     BitString.weight σ = BitString.weight (descend σ k).1 + listWeight (descend σ k).2 := by
@@ -309,5 +336,167 @@ theorem exists_adequate_slot {free : List BitString} {n : ℕ}
     weightSum_lt_add_self (List.pairwise_reverse.mpr hsort) hmin
   rw [pow_succ_add_pow_succ, weightSum_reverse, ← listWeight_eq_weightSum] at hlt
   exact absurd hmass (not_le.mpr hlt)
+
+/-! ## Requests and allocator state
+
+Structures with `Primcodable` instances transported along equivalences to products, so the
+allocator can later be run inside a program. Proofs stay outside the structures: the state is
+executable data and the invariant is a separate predicate parameterized by the processed
+requests. -/
+
+structure KraftRequest where
+  /-- The requested codeword length. -/
+  length : ℕ
+  /-- The output the codeword should describe. -/
+  output : BitString
+
+/-- Equivalence used only to transport `Primcodable`. -/
+def KraftRequest.equivProd : KraftRequest ≃ ℕ × BitString where
+  toFun r := (r.length, r.output)
+  invFun p := ⟨p.1, p.2⟩
+  left_inv := fun ⟨_, _⟩ ↦ rfl
+  right_inv := fun ⟨_, _⟩ ↦ rfl
+
+instance : Primcodable KraftRequest := Primcodable.ofEquiv _ KraftRequest.equivProd
+
+theorem primrec_kraftRequest_length : Primrec KraftRequest.length :=
+  Primrec.fst.comp (Primrec.of_equiv (e := KraftRequest.equivProd))
+
+theorem primrec_kraftRequest_output : Primrec KraftRequest.output :=
+  Primrec.snd.comp (Primrec.of_equiv (e := KraftRequest.equivProd))
+
+def KraftRequest.weight (r : KraftRequest) : ℚ≥0 := (2⁻¹ : ℚ≥0) ^ r.length
+
+def totalRequestWeight (rs : List KraftRequest) : ℚ≥0 := (rs.map KraftRequest.weight).sum
+
+@[simp] theorem totalRequestWeight_nil : totalRequestWeight [] = 0 := rfl
+
+theorem totalRequestWeight_append (rs ss : List KraftRequest) :
+    totalRequestWeight (rs ++ ss) = totalRequestWeight rs + totalRequestWeight ss := by
+  rw [totalRequestWeight, totalRequestWeight, totalRequestWeight, List.map_append, List.sum_append]
+
+@[simp] theorem totalRequestWeight_singleton (r : KraftRequest) :
+    totalRequestWeight [r] = r.weight := by
+  rw [totalRequestWeight, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero]
+
+structure Assignment where
+  /-- The allocated codeword. -/
+  codeword : BitString
+  /-- The output it describes. -/
+  output : BitString
+
+def Assignment.equivProd : Assignment ≃ BitString × BitString where
+  toFun a := (a.codeword, a.output)
+  invFun p := ⟨p.1, p.2⟩
+  left_inv := fun ⟨_, _⟩ ↦ rfl
+  right_inv := fun ⟨_, _⟩ ↦ rfl
+
+instance : Primcodable Assignment := Primcodable.ofEquiv _ Assignment.equivProd
+
+theorem primrec_assignment_codeword : Primrec Assignment.codeword :=
+  Primrec.fst.comp (Primrec.of_equiv (e := Assignment.equivProd))
+
+theorem primrec_assignment_output : Primrec Assignment.output :=
+  Primrec.snd.comp (Primrec.of_equiv (e := Assignment.equivProd))
+
+structure AllocationState where
+  /-- Codewords assigned so far, in request order. -/
+  assigned : List Assignment
+  /-- Unallocated slots, in strictly decreasing length order. -/
+  free : List BitString
+
+def AllocationState.equivProd : AllocationState ≃ List Assignment × List BitString where
+  toFun st := (st.assigned, st.free)
+  invFun p := ⟨p.1, p.2⟩
+  left_inv := fun ⟨_, _⟩ ↦ rfl
+  right_inv := fun ⟨_, _⟩ ↦ rfl
+
+instance : Primcodable AllocationState := Primcodable.ofEquiv _ AllocationState.equivProd
+
+theorem primrec_allocationState_assigned : Primrec AllocationState.assigned :=
+  Primrec.fst.comp (Primrec.of_equiv (e := AllocationState.equivProd))
+
+theorem primrec_allocationState_free : Primrec AllocationState.free :=
+  Primrec.snd.comp (Primrec.of_equiv (e := AllocationState.equivProd))
+
+/-! ## Selecting the longest adequate slot
+
+With the free list in decreasing-length order, the first slot of length at most `n` is the longest
+adequate one. Written as a structural recursion rather than through `takeWhile`, since the
+predicate depends on `n` and mathlib's list combinators are not parameterized in a second
+argument. -/
+
+def splitAtAdequate (n : ℕ) : List BitString → Option (List BitString × BitString × List BitString)
+  | [] => none
+  | σ :: L =>
+      if σ.length ≤ n then some ([], σ, L)
+      else (splitAtAdequate n L).map fun t ↦ (σ :: t.1, t.2.1, t.2.2)
+
+/-- **The splitter contract.** -/
+theorem splitAtAdequate_spec : ∀ {n : ℕ} {free before after : List BitString} {σ : BitString},
+    splitAtAdequate n free = some (before, σ, after) →
+      free = before ++ σ :: after ∧ (∀ ρ ∈ before, n < ρ.length) ∧ σ.length ≤ n := by
+  intro n free
+  induction free with
+  | nil => intro before after σ h; rw [splitAtAdequate] at h; exact absurd h (by simp)
+  | cons μ L ih =>
+    intro before after σ h
+    rw [splitAtAdequate] at h
+    by_cases hμ : μ.length ≤ n
+    · rw [if_pos hμ, Option.some_inj, Prod.mk.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨rfl, by simp, hμ⟩
+    · rw [if_neg hμ, Option.map_eq_some_iff] at h
+      obtain ⟨t, ht, hEq⟩ := h
+      obtain ⟨hb, hs, ha⟩ := ih ht
+      rw [Prod.mk.injEq, Prod.mk.injEq] at hEq
+      obtain ⟨rfl, rfl, rfl⟩ := hEq
+      refine ⟨by rw [hb]; rfl, ?_, ha⟩
+      intro ρ hρ
+      rcases List.mem_cons.mp hρ with rfl | hρ'
+      · omega
+      · exact hs ρ hρ'
+
+/-- **Completeness of the splitter**: an adequate slot is found whenever one exists. -/
+theorem splitAtAdequate_isSome {n : ℕ} {free : List BitString}
+    (h : ∃ σ ∈ free, σ.length ≤ n) : (splitAtAdequate n free).isSome := by
+  induction free with
+  | nil => obtain ⟨σ, hσ, -⟩ := h; exact absurd hσ (by simp)
+  | cons μ L ih =>
+    rw [splitAtAdequate]
+    by_cases hμ : μ.length ≤ n
+    · rw [if_pos hμ]; rfl
+    · rw [if_neg hμ, Option.isSome_map]
+      refine ih ?_
+      obtain ⟨σ, hσ, hlen⟩ := h
+      rcases List.mem_cons.mp hσ with rfl | hσ'
+      · exact absurd hlen hμ
+      · exact ⟨σ, hσ', hlen⟩
+
+theorem primrec_splitAtAdequate : Primrec₂ splitAtAdequate := by
+  have hstep : Primrec₂ fun (z : ℕ × List BitString)
+      (p : BitString × List BitString × Option (List BitString × BitString × List BitString)) ↦
+      (if p.1.length ≤ z.1 then some ([], p.1, p.2.1)
+        else p.2.2.map fun t ↦ (p.1 :: t.1, t.2.1, t.2.2)) := by
+    refine Primrec.ite
+      (Primrec.nat_le.comp (Primrec.list_length.comp (Primrec.fst.comp Primrec.snd))
+        (Primrec.fst.comp Primrec.fst))
+      (Primrec.option_some.comp
+        (Primrec.pair (Primrec.const [])
+          (Primrec.pair (Primrec.fst.comp Primrec.snd)
+            (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))))) ?_
+    refine Primrec.option_map (Primrec.snd.comp (Primrec.snd.comp Primrec.snd)) ?_
+    exact (Primrec.pair
+      (Primrec.list_cons.comp (Primrec.fst.comp (Primrec.snd.comp Primrec.fst))
+        (Primrec.fst.comp Primrec.snd))
+      (Primrec.pair (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
+        (Primrec.snd.comp (Primrec.snd.comp Primrec.snd)))).to₂
+  refine (Primrec.list_rec Primrec.snd
+    (Primrec.const (none : Option (List BitString × BitString × List BitString)))
+    hstep).of_eq fun z ↦ ?_
+  obtain ⟨n, L⟩ := z
+  induction L with
+  | nil => rfl
+  | cons μ L ih => rw [splitAtAdequate, ← ih]
 
 end AlgorithmicRandomness
