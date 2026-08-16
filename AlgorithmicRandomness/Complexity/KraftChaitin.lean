@@ -499,4 +499,279 @@ theorem primrec_splitAtAdequate : Primrec₂ splitAtAdequate := by
   | nil => rfl
   | cons μ L ih => rw [splitAtAdequate, ← ih]
 
+/-! ## The allocator -/
+
+/-- Incompatibility is symmetric, which is what lets the invariant's single ordered clause be
+taken apart and reassembled in a different order. -/
+private theorem not_compatible_symm {a b : BitString} (h : ¬BitString.Compatible a b) :
+    ¬BitString.Compatible b a := fun hc ↦ h hc.symm
+
+/-- Fulfil one request: take the longest adequate slot, descend to the requested length, and put
+the freed siblings back in its place. -/
+def allocStep (st : AllocationState) (r : KraftRequest) : Option AllocationState :=
+  (splitAtAdequate r.length st.free).map fun t ↦
+    { assigned := st.assigned ++ [⟨(descend t.2.1 (r.length - t.2.1.length)).1, r.output⟩],
+      free := t.1 ++ (descend t.2.1 (r.length - t.2.1.length)).2 ++ t.2.2 }
+
+def allocFrom (st : AllocationState) (rs : List KraftRequest) : Option AllocationState :=
+  rs.foldl (fun o r ↦ o.bind fun s ↦ allocStep s r) (some st)
+
+@[simp] theorem allocFrom_nil (st : AllocationState) : allocFrom st [] = some st := rfl
+
+private theorem allocFoldl_none (rs : List KraftRequest) :
+    rs.foldl (fun o r ↦ o.bind fun s ↦ allocStep s r) none = none := by
+  induction rs with
+  | nil => rfl
+  | cons r rs ih => rw [List.foldl_cons, Option.bind_none, ih]
+
+theorem allocFrom_cons (st : AllocationState) (r : KraftRequest) (rs : List KraftRequest) :
+    allocFrom st (r :: rs) = (allocStep st r).bind fun s ↦ allocFrom s rs := by
+  have hb : ((some st).bind fun s ↦ allocStep s r) = allocStep st r := rfl
+  rw [allocFrom, List.foldl_cons, hb]
+  cases hs : allocStep st r with
+  | none => rw [allocFoldl_none, Option.bind_none]
+  | some s => rfl
+
+/-- The empty codeword is the only slot at the start. -/
+def initState : AllocationState := ⟨[], [[]]⟩
+
+def allocate (rs : List KraftRequest) : Option AllocationState := allocFrom initState rs
+
+/-! ## The invariant -/
+
+/-- The four clauses. Free lengths strictly decrease; everything in play is pairwise
+incompatible; assignments correspond pointwise to the processed requests in both length and
+output; and processed weight plus free weight is exactly one. -/
+structure AllocationState.Invariant (processed : List KraftRequest) (st : AllocationState) :
+    Prop where
+  /-- Free slots have strictly decreasing lengths. -/
+  freeSorted : (st.free.map List.length).Pairwise (· > ·)
+  /-- Allocated codewords and free slots are pairwise incompatible. -/
+  incompat : ((st.assigned.map Assignment.codeword) ++ st.free).Pairwise
+    fun a b ↦ ¬BitString.Compatible a b
+  /-- Assignments match the processed requests pointwise. -/
+  correspond : st.assigned.map (fun a ↦ (a.codeword.length, a.output))
+    = processed.map fun r ↦ (r.length, r.output)
+  /-- Allocated mass and free mass are exactly one. -/
+  mass : totalRequestWeight processed + listWeight st.free = 1
+
+theorem invariant_initState : AllocationState.Invariant [] initState := by
+  refine ⟨by simp [initState], by simp [initState], by simp [initState], ?_⟩
+  rw [initState, totalRequestWeight_nil, zero_add, listWeight_cons, listWeight_nil, add_zero,
+    BitString.weight]
+  norm_num
+
+/-! ## Preservation
+
+All four clauses in one step. The geometry never reopens after this: `allocFrom_complete` is an
+ordinary induction on the remaining requests. -/
+
+theorem allocStep_preserves {processed : List KraftRequest} {st : AllocationState}
+    {r : KraftRequest} (hI : AllocationState.Invariant processed st)
+    (hB : totalRequestWeight (processed ++ [r]) ≤ 1) :
+    ∃ st', allocStep st r = some st' ∧ AllocationState.Invariant (processed ++ [r]) st' := by
+  -- the next request still fits inside the free mass, by additive cancellation
+  have hfit : r.weight ≤ listWeight st.free := by
+    rw [totalRequestWeight_append, totalRequestWeight_singleton] at hB
+    have := hB.trans_eq hI.mass.symm
+    exact le_of_add_le_add_left this
+  obtain ⟨σ, hσfree, hσlen⟩ :=
+    exists_adequate_slot hI.freeSorted (by rw [← KraftRequest.weight]; exact hfit)
+  obtain ⟨⟨before, σ₀, after⟩, hsplit⟩ :=
+    Option.isSome_iff_exists.mp (splitAtAdequate_isSome ⟨σ, hσfree, hσlen⟩)
+  obtain ⟨hfree, hbefore, hσ₀⟩ := splitAtAdequate_spec hsplit
+  set k := r.length - σ₀.length with hk
+  set c := (descend σ₀ k).1 with hc
+  set sibs := (descend σ₀ k).2 with hsibs
+  have hclen : c.length = r.length := by rw [hc, length_descend_fst]; omega
+  refine ⟨_, by rw [allocStep, hsplit, Option.map_some], ?_⟩
+  -- unpack the old incompatibility clause
+  have hincOld := hI.incompat
+  rw [hfree, List.pairwise_append, List.pairwise_append, List.pairwise_cons] at hincOld
+  obtain ⟨hApw, ⟨hBpw, ⟨hσafter, hAfterpw⟩, hcross⟩, hAall⟩ := hincOld
+  -- and the old ordering clause
+  have hafterlen : ∀ ρ ∈ after, ρ.length < σ₀.length := by
+    have := hI.freeSorted
+    rw [hfree, List.map_append, List.map_cons, List.pairwise_append, List.pairwise_cons] at this
+    intro ρ hρ
+    exact this.2.1.1 ρ.length (List.mem_map_of_mem hρ)
+  have hbeforelen : ∀ ρ ∈ before, r.length < ρ.length := hbefore
+  have hsiblen : ∀ ρ ∈ sibs, σ₀.length < ρ.length ∧ ρ.length ≤ r.length := by
+    intro ρ hρ
+    obtain ⟨h1, h2⟩ := length_of_mem_descend_snd hρ
+    exact ⟨h1, by omega⟩
+  -- every new string extends the chosen slot
+  have hext : ∀ ρ ∈ c :: sibs, σ₀ <+: ρ := by
+    intro ρ hρ
+    rcases List.mem_cons.mp hρ with rfl | hρ'
+    · exact prefix_descend_fst σ₀ k
+    · exact prefix_of_mem_descend_snd hρ'
+  have hcsibs : (c :: sibs).Pairwise fun a b ↦ ¬BitString.Compatible a b := pairwise_descend σ₀ k
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · -- free lengths still strictly decrease
+    simp only [List.map_append]
+    refine List.pairwise_append.mpr ⟨?_, ?_, ?_⟩
+    · refine List.pairwise_append.mpr ⟨?_, pairwise_length_descend_snd σ₀ k, ?_⟩
+      · have hs := hI.freeSorted
+        rw [hfree, List.map_append] at hs
+        exact (List.pairwise_append.mp hs).1
+      · rintro a ha b hb
+        rw [List.mem_map] at ha hb
+        obtain ⟨ρ, hρ, rfl⟩ := ha
+        obtain ⟨μ, hμ, rfl⟩ := hb
+        have h1 := hbeforelen ρ hρ
+        have h2 := (hsiblen μ hμ).2
+        omega
+    · have hs := hI.freeSorted
+      rw [hfree, List.map_append, List.map_cons] at hs
+      exact (List.pairwise_cons.mp (List.pairwise_append.mp hs).2.1).2
+    · rintro a ha b hb
+      rw [List.mem_map] at hb
+      obtain ⟨μ, hμ, rfl⟩ := hb
+      have h2 := hafterlen μ hμ
+      rcases List.mem_append.mp ha with ha' | ha' <;> rw [List.mem_map] at ha'
+      · obtain ⟨ρ, hρ, rfl⟩ := ha'
+        have h1 := hbeforelen ρ hρ
+        have h3 := hσ₀
+        omega
+      · obtain ⟨ρ, hρ, rfl⟩ := ha'
+        have h1 := (hsiblen ρ hρ).1
+        omega
+  · -- pairwise incompatibility, reassembled
+    have hAσ : ∀ a ∈ st.assigned.map Assignment.codeword, ¬BitString.Compatible a σ₀ :=
+      fun a ha ↦ hAall a ha σ₀ (List.mem_append.mpr (Or.inr List.mem_cons_self))
+    have hAbefore : ∀ a ∈ st.assigned.map Assignment.codeword, ∀ b ∈ before,
+        ¬BitString.Compatible a b := fun a ha b hb ↦
+      hAall a ha b (List.mem_append.mpr (Or.inl hb))
+    have hAafter : ∀ a ∈ st.assigned.map Assignment.codeword, ∀ b ∈ after,
+        ¬BitString.Compatible a b := fun a ha b hb ↦
+      hAall a ha b (List.mem_append.mpr (Or.inr (List.mem_cons_of_mem _ hb)))
+    simp only [List.map_append, List.map_cons, List.map_nil]
+    refine List.pairwise_append.mpr ⟨?_, ?_, ?_⟩
+    · refine List.pairwise_append.mpr ⟨hApw, List.pairwise_singleton _ _, ?_⟩
+      intro a ha b hb
+      rw [List.mem_singleton] at hb
+      subst hb
+      exact incompatible_of_prefix_right (hext _ List.mem_cons_self) (hAσ a ha)
+    · refine List.pairwise_append.mpr ⟨?_, hAfterpw, ?_⟩
+      · refine List.pairwise_append.mpr ⟨hBpw, (List.pairwise_cons.mp hcsibs).2, ?_⟩
+        intro a ha b hb
+        exact incompatible_of_prefix_right (hext b (List.mem_cons_of_mem _ hb))
+          (hcross a ha σ₀ List.mem_cons_self)
+      · intro a ha b hb
+        rcases List.mem_append.mp ha with ha' | ha'
+        · exact hcross a ha' b (List.mem_cons_of_mem _ hb)
+        · exact not_compatible_symm (incompatible_of_prefix_right
+            (hext a (List.mem_cons_of_mem _ ha')) (not_compatible_symm (hσafter b hb)))
+    · intro a ha b hb
+      rcases List.mem_append.mp ha with ha' | ha'
+      · rcases List.mem_append.mp hb with hb' | hb'
+        · rcases List.mem_append.mp hb' with hb'' | hb''
+          · exact hAbefore a ha' b hb''
+          · exact incompatible_of_prefix_right (hext b (List.mem_cons_of_mem _ hb'')) (hAσ a ha')
+        · exact hAafter a ha' b hb'
+      · rw [List.mem_singleton] at ha'
+        subst ha'
+        rcases List.mem_append.mp hb with hb' | hb'
+        · rcases List.mem_append.mp hb' with hb'' | hb''
+          · exact not_compatible_symm (incompatible_of_prefix_right
+              (hext _ List.mem_cons_self) (hcross b hb'' σ₀ List.mem_cons_self))
+          · exact (List.pairwise_cons.mp hcsibs).1 b hb''
+        · exact not_compatible_symm (incompatible_of_prefix_right
+            (hext _ List.mem_cons_self) (not_compatible_symm (hσafter b hb')))
+  · -- pointwise correspondence
+    have hcorr := hI.correspond
+    have hcl : (descend σ₀ (r.length - List.length σ₀)).1.length = r.length := by
+      rw [length_descend_fst]; omega
+    simp only [List.map_append, List.map_cons, List.map_nil, hcorr, hcl]
+  · -- mass
+    have hsplitw : listWeight st.free = listWeight before + r.weight + listWeight sibs
+        + listWeight after := by
+      rw [hfree, listWeight_append, listWeight_cons, weight_descend σ₀ k, ← hc, ← hsibs,
+        KraftRequest.weight, ← hclen, BitString.weight]
+      ring
+    rw [totalRequestWeight_append, totalRequestWeight_singleton, listWeight_append,
+      listWeight_append, ← hI.mass, hsplitw]
+    ring
+
+theorem allocFrom_complete : ∀ {remaining processed : List KraftRequest} {st : AllocationState},
+    AllocationState.Invariant processed st → totalRequestWeight (processed ++ remaining) ≤ 1 →
+    ∃ st', allocFrom st remaining = some st' ∧
+      AllocationState.Invariant (processed ++ remaining) st' := by
+  intro remaining
+  induction remaining with
+  | nil => intro processed st hI hB; exact ⟨st, rfl, by rwa [List.append_nil]⟩
+  | cons r rs ih =>
+    intro processed st hI hB
+    have hstep : totalRequestWeight (processed ++ [r]) ≤ 1 := by
+      refine le_trans ?_ hB
+      rw [totalRequestWeight_append, totalRequestWeight_append, totalRequestWeight_singleton]
+      refine add_le_add le_rfl ?_
+      simp only [totalRequestWeight, List.map_cons, List.sum_cons]
+      exact le_self_add
+    obtain ⟨st₁, hst₁, hI₁⟩ := allocStep_preserves hI hstep
+    have hB₁ : totalRequestWeight ((processed ++ [r]) ++ rs) ≤ 1 := by
+      rwa [List.append_assoc, List.singleton_append]
+    obtain ⟨st', hst', hI'⟩ := ih hI₁ hB₁
+    refine ⟨st', by rw [allocFrom_cons, hst₁]; exact hst', ?_⟩
+    rwa [List.append_assoc, List.singleton_append] at hI'
+
+/-- **The allocator is complete.** Any request list inside the Kraft budget is fully allocated,
+and the resulting state satisfies the invariant. -/
+theorem allocate_complete {rs : List KraftRequest} (h : totalRequestWeight rs ≤ 1) :
+    ∃ st, allocate rs = some st ∧ AllocationState.Invariant rs st := by
+  obtain ⟨st, hst, hI⟩ := allocFrom_complete invariant_initState (by rwa [List.nil_append])
+  exact ⟨st, hst, by rwa [List.nil_append] at hI⟩
+
+/-! ## Computability of the allocator -/
+
+theorem primrec_allocStep : Primrec₂ allocStep := by
+  have hsplit : Primrec fun z : AllocationState × KraftRequest ↦
+      splitAtAdequate z.2.length z.1.free :=
+    primrec_splitAtAdequate.comp (primrec_kraftRequest_length.comp Primrec.snd)
+      (primrec_allocationState_free.comp Primrec.fst)
+  have hdesc : Primrec fun w : (AllocationState × KraftRequest) ×
+      (List BitString × BitString × List BitString) ↦
+      descend w.2.2.1 (w.1.2.length - w.2.2.1.length) :=
+    primrec_descend.comp (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
+      (Primrec.nat_sub.comp
+        (primrec_kraftRequest_length.comp (Primrec.snd.comp Primrec.fst))
+        (Primrec.list_length.comp (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))))
+  have hbody : Primrec₂ fun (z : AllocationState × KraftRequest)
+      (t : List BitString × BitString × List BitString) ↦
+      AllocationState.mk
+        (z.1.assigned ++ [Assignment.mk (descend t.2.1 (z.2.length - t.2.1.length)).1 z.2.output])
+        (t.1 ++ (descend t.2.1 (z.2.length - t.2.1.length)).2 ++ t.2.2) := by
+    have hassigned : Primrec fun w : (AllocationState × KraftRequest) ×
+        (List BitString × BitString × List BitString) ↦
+        w.1.1.assigned ++ [Assignment.mk (descend w.2.2.1 (w.1.2.length - w.2.2.1.length)).1
+          w.1.2.output] := by
+      refine Primrec.list_append.comp
+        ((primrec_allocationState_assigned.comp Primrec.fst).comp Primrec.fst) ?_
+      refine Primrec.list_cons.comp ?_ (Primrec.const [])
+      exact (Primrec.of_equiv_symm_iff (e := Assignment.equivProd) |>.mpr
+        (Primrec.pair (Primrec.fst.comp hdesc)
+          (primrec_kraftRequest_output.comp (Primrec.snd.comp Primrec.fst)))).of_eq fun _ ↦ rfl
+    have hfreeNew : Primrec fun w : (AllocationState × KraftRequest) ×
+        (List BitString × BitString × List BitString) ↦
+        w.2.1 ++ (descend w.2.2.1 (w.1.2.length - w.2.2.1.length)).2 ++ w.2.2.2 :=
+      Primrec.list_append.comp
+        (Primrec.list_append.comp (Primrec.fst.comp Primrec.snd) (Primrec.snd.comp hdesc))
+        (Primrec.snd.comp (Primrec.snd.comp Primrec.snd))
+    exact (Primrec.of_equiv_symm_iff (e := AllocationState.equivProd) |>.mpr
+      (Primrec.pair hassigned hfreeNew)).of_eq fun _ ↦ rfl
+  exact Primrec.option_map hsplit hbody
+
+theorem primrec_allocFrom : Primrec₂ allocFrom := by
+  have hstep : Primrec₂ fun (z : AllocationState × List KraftRequest)
+      (p : Option AllocationState × KraftRequest) ↦ p.1.bind fun s ↦ allocStep s p.2 := by
+    refine Primrec.option_bind (Primrec.fst.comp Primrec.snd) ?_
+    exact (primrec_allocStep.comp Primrec.snd
+      (Primrec.snd.comp (Primrec.snd.comp Primrec.fst))).to₂
+  exact Primrec.list_foldl Primrec.snd
+    (Primrec.option_some.comp Primrec.fst) hstep
+
+theorem primrec_allocate : Primrec allocate :=
+  primrec_allocFrom.comp (Primrec.const initState) Primrec.id
+
 end AlgorithmicRandomness
