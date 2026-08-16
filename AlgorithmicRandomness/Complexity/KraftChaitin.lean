@@ -123,6 +123,44 @@ theorem prefix_of_mem_descend_snd {σ : BitString} {k : ℕ} {ρ : BitString}
       subst h'
       exact List.prefix_append σ [true]
 
+/-- **The closed form for the siblings.** The recursion in `descend` substitutes into its string
+parameter, so it is not in `Primrec.nat_rec` shape; this identity puts it in `list_map` shape
+instead, which is what the computability proof needs. -/
+theorem descend_snd_eq (σ : BitString) (k : ℕ) :
+    (descend σ k).2
+      = (List.range k).map fun i ↦ σ ++ List.replicate (k - 1 - i) false ++ [true] := by
+  induction k generalizing σ with
+  | zero => simp
+  | succ k ih =>
+    rw [descend_succ, ih, List.range_succ, List.map_append]
+    refine congrArg₂ (· ++ ·) (List.map_congr_left fun i hi ↦ ?_) (by simp)
+    rw [List.mem_range] at hi
+    rw [List.append_assoc σ [false], List.singleton_append, ← List.replicate_succ,
+      show k - 1 - i + 1 = k + 1 - 1 - i from by omega]
+
+private theorem primrec_replicateFalse : Primrec fun n : ℕ ↦ List.replicate n false := by
+  refine (Primrec.list_map Primrec.list_range (Primrec.const false).to₂).of_eq fun n ↦ ?_
+  rw [List.map_const', List.length_range]
+
+theorem primrec_descend : Primrec₂ descend := by
+  have hfst : Primrec fun z : BitString × ℕ ↦ (descend z.1 z.2).1 := by
+    refine (Primrec.list_append.comp Primrec.fst
+      (primrec_replicateFalse.comp Primrec.snd)).of_eq fun z ↦ ?_
+    rw [descend_fst]
+  have hbody : Primrec₂ fun (z : BitString × ℕ) (i : ℕ) ↦
+      z.1 ++ List.replicate (z.2 - 1 - i) false ++ [true] :=
+    (Primrec.list_append.comp
+      (Primrec.list_append.comp (Primrec.fst.comp Primrec.fst)
+        (primrec_replicateFalse.comp
+          (Primrec.nat_sub.comp
+            (Primrec.nat_sub.comp (Primrec.snd.comp Primrec.fst) (Primrec.const 1))
+            Primrec.snd)))
+      (Primrec.const [true])).to₂
+  have hsnd : Primrec fun z : BitString × ℕ ↦ (descend z.1 z.2).2 :=
+    (Primrec.list_map (Primrec.list_range.comp Primrec.snd) hbody).of_eq fun z ↦
+      (descend_snd_eq z.1 z.2).symm
+  exact (Primrec.pair hfst hsnd).of_eq fun z ↦ rfl
+
 /-- **The splitting weight identity.** -/
 theorem weight_descend (σ : BitString) (k : ℕ) :
     BitString.weight σ = BitString.weight (descend σ k).1 + listWeight (descend σ k).2 := by
