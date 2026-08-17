@@ -289,4 +289,74 @@ private theorem nodup_levelOutputs (T : MartinLofTest) (R n : ℕ) :
   subst heq
   exact hab (Or.inl (List.prefix_refl a))
 
+/-! ## The representation seam
+
+`levelOutputs` is defined by recursion on the global stage, which is what made the coupled
+set/pairwise induction clean; the trace is a chronological list of tagged events. This is the one
+place the two meet. Stating it for the *tagged requests* rather than only their outputs certifies
+chronology, multiplicity, the edge cases, and the request length `|τ| - n` all at once — otherwise
+the regrouping step would still need a separate theorem about lengths. -/
+
+private theorem flatMap_ite (l : List ℕ) (n : ℕ) (L : List RequestEvent) (hnd : l.Nodup) :
+    (l.flatMap fun m ↦ if m = n then L else []) = if n ∈ l then L else [] := by
+  induction l with
+  | nil => simp
+  | cons m l ih =>
+    rw [List.nodup_cons] at hnd
+    rw [List.flatMap_cons, ih hnd.2]
+    by_cases hm : m = n
+    · subst hm
+      rw [if_pos rfl, if_neg hnd.1, if_pos List.mem_cons_self, List.append_nil]
+    · rw [if_neg hm, List.nil_append]
+      by_cases hmem : n ∈ l
+      · rw [if_pos hmem, if_pos (List.mem_cons_of_mem m hmem)]
+      · rw [if_neg hmem, if_neg (by simp [hmem, Ne.symm hm])]
+
+private theorem filter_eventsAt (T : MartinLofTest) (R n : ℕ) :
+    (eventsAt T R).filter (fun e ↦ decide (e.1 = n))
+      = if n ≤ R then (freshAt T n R).map fun τ ↦ ((n, ⟨τ.length - n, τ⟩) : RequestEvent)
+        else [] := by
+  rw [eventsAt, List.filter_flatMap]
+  have hbody : ∀ m ∈ List.range (R + 1),
+      (((freshAt T m R).map fun τ ↦ ((m, ⟨τ.length - m, τ⟩) : RequestEvent)).filter
+        fun e ↦ decide (e.1 = n))
+        = if m = n then
+            (freshAt T n R).map fun τ ↦ ((n, ⟨τ.length - n, τ⟩) : RequestEvent) else [] := by
+    intro m _
+    rw [List.filter_map]
+    by_cases hm : m = n
+    · subst hm
+      rw [if_pos rfl, List.filter_congr (q := fun _ ↦ true) (fun _ _ ↦ by simp),
+        List.filter_true]
+    · rw [if_neg hm, List.filter_congr (q := fun _ ↦ false) (fun _ _ ↦ by simp [hm]),
+        List.filter_false, List.map_nil]
+  rw [List.flatMap_congr hbody, flatMap_ite _ _ _ List.nodup_range]
+  by_cases h : n ≤ R
+  · rw [if_pos (List.mem_range.mpr (Nat.lt_succ_of_le h)), if_pos h]
+  · rw [if_neg (fun hc ↦ h (Nat.lt_succ_iff.mp (List.mem_range.mp hc))), if_neg h]
+
+private theorem filter_eventTrace_eq_levelRequests (T : MartinLofTest) (R n : ℕ) :
+    (eventTrace T R).filter (fun e ↦ decide (e.1 = n))
+      = (levelOutputs T R n).map fun τ ↦ ((n, ⟨τ.length - n, τ⟩) : RequestEvent) := by
+  induction R with
+  | zero =>
+    rw [eventTrace_zero, filter_eventsAt, levelOutputs]
+    by_cases hn : n = 0
+    · subst hn
+      rw [if_pos (le_refl 0), if_pos rfl]
+    · rw [if_neg (by omega), if_neg hn, List.map_nil]
+  | succ R ih =>
+    rw [eventTrace_succ, List.filter_append, ih, filter_eventsAt, levelOutputs_succ,
+      List.map_append]
+    by_cases hn : n ≤ R + 1
+    · rw [if_pos hn, if_pos hn]
+    · rw [if_neg hn, if_neg hn, List.map_nil]
+
+/-- The output form, as a corollary. -/
+private theorem filter_eventTrace_map_output (T : MartinLofTest) (R n : ℕ) :
+    ((eventTrace T R).filter (fun e ↦ decide (e.1 = n))).map (fun e ↦ e.2.output)
+      = levelOutputs T R n := by
+  rw [filter_eventTrace_eq_levelRequests, List.map_map]
+  exact List.map_id _
+
 end AlgorithmicRandomness
