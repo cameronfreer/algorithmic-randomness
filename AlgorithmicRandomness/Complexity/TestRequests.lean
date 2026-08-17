@@ -33,7 +33,8 @@ compared directly; a shorter cylinder replacing earlier longer ones would make h
 weight overcount.
 -/
 
-open scoped NNRat
+open MeasureTheory
+open scoped NNRat ENNReal
 
 namespace AlgorithmicRandomness
 
@@ -358,5 +359,98 @@ private theorem filter_eventTrace_map_output (T : MartinLofTest) (R n : ℕ) :
       = levelOutputs T R n := by
   rw [filter_eventTrace_eq_levelRequests, List.map_map]
   exact List.map_id _
+
+/-! ## Step 1: the output-weight identity -/
+
+private theorem weight_le_listWeight : ∀ {L : List BitString} {τ : BitString}, τ ∈ L →
+    BitString.weight τ ≤ listWeight L := by
+  intro L
+  induction L with
+  | nil => intro τ h; exact absurd h (by simp)
+  | cons a L ih =>
+    intro τ h
+    rw [listWeight_cons]
+    rcases List.mem_cons.mp h with rfl | h'
+    · exact le_self_add
+    · exact (ih h').trans le_add_self
+
+private theorem prefixFree_levelOutputs (T : MartinLofTest) (R n : ℕ) :
+    PrefixFree ((levelOutputs T R n).toFinset : Set BitString) := by
+  rw [prefixFree_iff]
+  intro σ hσ τ hτ hpre
+  rw [Finset.mem_coe, List.mem_toFinset] at hσ hτ
+  by_contra hne
+  exact pairwise_incompat_pair (levelOutputs_pairwise T R n) hσ hτ hne (Or.inl hpre)
+
+private theorem coe_pow_inv_two' (k : ℕ) :
+    (((2⁻¹ : ℚ≥0) ^ k : ℚ≥0) : ℝ≥0∞) = (2⁻¹ : ℝ≥0∞) ^ k := by
+  rw [← ENNReal.coe_nnratCast]
+  push_cast
+  rfl
+
+private theorem listWeight_levelOutputs (T : MartinLofTest) (R n : ℕ) :
+    listWeight (levelOutputs T R n)
+      = if n ≤ R then T.openCode.stageWeight (2 * n + 1) R else 0 := by
+  by_cases hn : n ≤ R
+  · rw [if_pos hn, ← listWeight_toFinset (nodup_levelOutputs T R n)]
+    have hmeas : fairCoin (cylinderUnion (levelOutputs T R n).toFinset)
+        = ((totalWeight (levelOutputs T R n).toFinset : ℚ≥0) : ℝ≥0∞) :=
+      fairCoin_cylinderUnion_of_prefixFree (prefixFree_levelOutputs T R n)
+    rw [cylinderUnion_levelOutputs T hn] at hmeas
+    have hstage : fairCoin (T.openCode.stageSet (2 * n + 1) R)
+        = ((T.openCode.stageWeight (2 * n + 1) R : ℚ≥0) : ℝ≥0∞) :=
+      UniformOpenCode.fairCoin_stageSet T.openCode (2 * n + 1) R
+    rw [hstage] at hmeas
+    rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ENNReal.coe_inj] at hmeas
+    exact_mod_cast hmeas.symm
+  · rw [if_neg hn, levelOutputs_eq_nil_of_lt T (by omega), listWeight_nil]
+
+/-! ## Step 2: reflecting the order of half-powers -/
+
+private theorem half_pow_lt_half_pow_succ (a : ℕ) :
+    (2⁻¹ : ℚ≥0) ^ (a + 1) < (2⁻¹ : ℚ≥0) ^ a := by
+  have hpos : (0 : ℚ≥0) < (2⁻¹ : ℚ≥0) ^ a := by positivity
+  calc (2⁻¹ : ℚ≥0) ^ (a + 1) = (2⁻¹ : ℚ≥0) ^ a * 2⁻¹ := pow_succ _ _
+    _ < (2⁻¹ : ℚ≥0) ^ a * 1 := mul_lt_mul_of_pos_left (by norm_num) hpos
+    _ = (2⁻¹ : ℚ≥0) ^ a := mul_one _
+
+theorem half_pow_le_half_pow_iff {a b : ℕ} :
+    (2⁻¹ : ℚ≥0) ^ a ≤ (2⁻¹ : ℚ≥0) ^ b ↔ b ≤ a := by
+  constructor
+  · intro h
+    by_contra hab
+    push Not at hab
+    obtain ⟨d, rfl⟩ : ∃ d, b = a + 1 + d := ⟨b - a - 1, by omega⟩
+    have h1 : (2⁻¹ : ℚ≥0) ^ (a + 1 + d) ≤ (2⁻¹ : ℚ≥0) ^ (a + 1) :=
+      pow_le_pow_of_le_one (by norm_num) (by norm_num) (by omega)
+    exact absurd h (not_le.mpr (lt_of_le_of_lt h1 (half_pow_lt_half_pow_succ a)))
+  · intro h
+    exact pow_le_pow_of_le_one (by norm_num) (by norm_num) h
+
+/-! ## Step 3: length admissibility
+
+A fresh cylinder at level `2n+1` cannot be shorter than `2n+1`: its own weight is at most the
+stage weight, which the test bounds by `2⁻⁽²ⁿ⁺¹⁾`. This is where measure theory enters, and it
+does not appear again. -/
+
+private theorem stageWeight_le (T : MartinLofTest) (k s : ℕ) :
+    T.openCode.stageWeight k s ≤ (2⁻¹ : ℚ≥0) ^ k := by
+  have h := (UniformOpenCode.fairCoin_denote_le_iff T.openCode k _).mp (T.measure_le k) s
+  rw [← coe_pow_inv_two' k, ← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast,
+    ENNReal.coe_le_coe] at h
+  exact_mod_cast h
+
+private theorem length_ge_of_mem_levelOutputs (T : MartinLofTest) {R n : ℕ} (hn : n ≤ R)
+    {τ : BitString} (hτ : τ ∈ levelOutputs T R n) : 2 * n + 1 ≤ τ.length := by
+  have h1 : BitString.weight τ ≤ listWeight (levelOutputs T R n) := weight_le_listWeight hτ
+  rw [listWeight_levelOutputs, if_pos hn] at h1
+  have h2 : BitString.weight τ ≤ (2⁻¹ : ℚ≥0) ^ (2 * n + 1) :=
+    h1.trans (stageWeight_le T _ _)
+  rw [BitString.weight] at h2
+  exact half_pow_le_half_pow_iff.mp h2
+
+private theorem le_length_of_mem_levelOutputs (T : MartinLofTest) {R n : ℕ} (hn : n ≤ R)
+    {τ : BitString} (hτ : τ ∈ levelOutputs T R n) : n ≤ τ.length :=
+  le_trans (by omega) (length_ge_of_mem_levelOutputs T hn hτ)
 
 end AlgorithmicRandomness

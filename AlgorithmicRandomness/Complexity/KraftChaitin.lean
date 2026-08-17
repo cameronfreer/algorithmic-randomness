@@ -952,7 +952,7 @@ theorem primrec_lookupAssignment : Primrec₂ lookupAssignment := by
 
 /-- Symmetric extraction from a pairwise list, since `List.Pairwise.forall` wants a `Std.Symm`
 instance rather than a symmetry proof. -/
-private theorem pairwise_incompat_pair : ∀ {l : List BitString},
+theorem pairwise_incompat_pair : ∀ {l : List BitString},
     (l.Pairwise fun a b ↦ ¬BitString.Compatible a b) → ∀ {a b : BitString}, a ∈ l → b ∈ l →
     a ≠ b → ¬BitString.Compatible a b := by
   intro l
