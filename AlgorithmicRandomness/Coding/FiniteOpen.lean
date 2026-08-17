@@ -434,15 +434,21 @@ theorem coveredBy_iff {L : List BitString} {ρ : BitString} :
       · exact Or.inr hp
       · exact Or.inl ⟨σ, hσ, hp⟩
 
-/-- The fresh part of `new` beyond `old`: a prefix-free family at one common length. -/
+/-- The fresh part of `new` beyond `old`: a duplicate-free, prefix-free family at one common
+length. The `dedup` is not cosmetic — refining two comparable members of `new` to the common length
+produces the same extension twice, so without it the list would repeat and any list-level weight
+would double-count. -/
 def difference (new old : List BitString) : List BitString :=
-  (new.flatMap (extendTo (maxLen (new ++ old)))).filterMap fun ρ ↦
-    if coveredBy old ρ then none else some ρ
+  ((new.flatMap (extendTo (maxLen (new ++ old)))).filterMap fun ρ ↦
+    if coveredBy old ρ then none else some ρ).dedup
+
+theorem nodup_difference (new old : List BitString) : (difference new old).Nodup :=
+  List.nodup_dedup _
 
 theorem mem_difference {new old : List BitString} {ρ : BitString} :
     ρ ∈ difference new old ↔
       (∃ σ ∈ new, σ <+: ρ) ∧ ρ.length = maxLen (new ++ old) ∧ coveredBy old ρ = false := by
-  rw [difference, List.mem_filterMap]
+  rw [difference, List.mem_dedup, List.mem_filterMap]
   constructor
   · rintro ⟨μ, hμ, hsome⟩
     by_cases hc : coveredBy old μ = true
@@ -468,6 +474,30 @@ theorem prefixFree_difference (new old : List BitString) :
   rw [Finset.mem_coe, List.mem_toFinset] at hσ hτ
   exact hpre.eq_of_length
     ((length_of_mem_difference hσ).trans (length_of_mem_difference hτ).symm)
+
+/-- The list-level form: distinct members of one length are incompatible, and there are no
+repeats. -/
+private theorem pairwise_incompat_of_nodup : ∀ {L : List BitString} {m : ℕ}, L.Nodup →
+    (∀ ρ ∈ L, ρ.length = m) → L.Pairwise fun a b ↦ ¬BitString.Compatible a b := by
+  intro L
+  induction L with
+  | nil => intro m _ _; simp
+  | cons a L ih =>
+    intro m hnd hlen
+    rw [List.nodup_cons] at hnd
+    refine List.pairwise_cons.mpr ⟨fun b hb hcomp ↦ ?_,
+      ih hnd.2 fun ρ hρ ↦ hlen ρ (List.mem_cons_of_mem a hρ)⟩
+    have hab : a.length = b.length := by
+      rw [hlen a List.mem_cons_self, hlen b (List.mem_cons_of_mem a hb)]
+    rcases hcomp with hp | hp
+    · exact hnd.1 (by rw [hp.eq_of_length hab]; exact hb)
+    · exact hnd.1 (by rw [← hp.eq_of_length hab.symm]; exact hb)
+
+/-- The list-level form: no repeats, and distinct members of one length are incompatible. -/
+theorem pairwise_difference (new old : List BitString) :
+    (difference new old).Pairwise fun a b ↦ ¬BitString.Compatible a b :=
+  pairwise_incompat_of_nodup (m := maxLen (new ++ old)) (nodup_difference new old)
+    fun _ hρ ↦ length_of_mem_difference hρ
 
 /-- **The semantic contract.** -/
 theorem cylinderUnion_difference (new old : List BitString) :
@@ -545,9 +575,9 @@ theorem primrec_coveredBy : Primrec₂ coveredBy := by
 theorem primrec_difference : Primrec₂ difference := by
   have hlen : Primrec fun z : List BitString × List BitString ↦ maxLen (z.1 ++ z.2) :=
     primrec_maxLen.comp (Primrec.list_append.comp Primrec.fst Primrec.snd)
-  refine Primrec.listFilterMap
+  refine primrec_dedup.comp (Primrec.listFilterMap
     (Primrec.list_flatMap Primrec.fst
-      ((primrec_extendTo.comp (hlen.comp Primrec.fst) Primrec.snd).to₂)) ?_
+      ((primrec_extendTo.comp (hlen.comp Primrec.fst) Primrec.snd).to₂)) ?_)
   refine Primrec.ite
     (Primrec.eq.comp (primrec_coveredBy.comp (Primrec.snd.comp Primrec.fst) Primrec.snd)
       (Primrec.const true))
