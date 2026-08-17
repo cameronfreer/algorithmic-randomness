@@ -453,4 +453,169 @@ private theorem le_length_of_mem_levelOutputs (T : MartinLofTest) {R n : ℕ} (h
     {τ : BitString} (hτ : τ ∈ levelOutputs T R n) : n ≤ τ.length :=
   le_trans (by omega) (length_ge_of_mem_levelOutputs T hn hτ)
 
+/-! ## Step 4: request scaling -/
+
+private theorem two_pow_mul_half_pow (n : ℕ) :
+    (2 : ℚ≥0) ^ n * (2⁻¹ : ℚ≥0) ^ (2 * n + 1) = (2⁻¹ : ℚ≥0) ^ (n + 1) := by
+  have hsplit : (2⁻¹ : ℚ≥0) ^ (2 * n + 1) = (2⁻¹ : ℚ≥0) ^ n * (2⁻¹ : ℚ≥0) ^ (n + 1) := by
+    rw [← pow_add]
+    congr 1
+    omega
+  have hcancel : (2 : ℚ≥0) ^ n * (2⁻¹ : ℚ≥0) ^ n = 1 := by
+    rw [← mul_pow]
+    norm_num
+  rw [hsplit, ← mul_assoc, hcancel, one_mul]
+
+private theorem totalRequestWeight_map_eq_scale : ∀ {L : List BitString} {n : ℕ},
+    (∀ τ ∈ L, n ≤ τ.length) →
+    totalRequestWeight (L.map fun τ ↦ (⟨τ.length - n, τ⟩ : KraftRequest))
+      = (2 : ℚ≥0) ^ n * listWeight L := by
+  intro L
+  induction L with
+  | nil => intro n _; rw [List.map_nil, totalRequestWeight_nil, listWeight_nil, mul_zero]
+  | cons a L ih =>
+    intro n h
+    rw [List.map_cons, totalRequestWeight, List.map_cons, List.sum_cons, ← totalRequestWeight,
+      ih (fun τ hτ ↦ h τ (List.mem_cons_of_mem a hτ)), listWeight_cons, mul_add]
+    congr 1
+    rw [KraftRequest.weight]
+    exact requestWeight_eq_scale (h a List.mem_cons_self)
+
+private theorem levelRequestWeight_eq_scale (T : MartinLofTest) {R n : ℕ} (hn : n ≤ R) :
+    totalRequestWeight ((levelOutputs T R n).map fun τ ↦ (⟨τ.length - n, τ⟩ : KraftRequest))
+      = (2 : ℚ≥0) ^ n * listWeight (levelOutputs T R n) :=
+  totalRequestWeight_map_eq_scale fun _ hτ ↦ le_length_of_mem_levelOutputs T hn hτ
+
+/-! ## Step 5: the level bound -/
+
+private theorem levelRequestWeight_le (T : MartinLofTest) (R n : ℕ) :
+    totalRequestWeight ((levelOutputs T R n).map fun τ ↦ (⟨τ.length - n, τ⟩ : KraftRequest))
+      ≤ (2⁻¹ : ℚ≥0) ^ (n + 1) := by
+  by_cases hn : n ≤ R
+  · rw [levelRequestWeight_eq_scale T hn, listWeight_levelOutputs, if_pos hn]
+    calc (2 : ℚ≥0) ^ n * T.openCode.stageWeight (2 * n + 1) R
+        ≤ (2 : ℚ≥0) ^ n * (2⁻¹ : ℚ≥0) ^ (2 * n + 1) :=
+          mul_le_mul' le_rfl (stageWeight_le T _ _)
+      _ = (2⁻¹ : ℚ≥0) ^ (n + 1) := two_pow_mul_half_pow n
+  · rw [levelOutputs_eq_nil_of_lt T (by omega), List.map_nil, totalRequestWeight_nil]
+    exact zero_le
+
+/-! ## Step 6: regrouping
+
+Only the tag index becomes a `Finset`; every event group stays a `List`. Identical requests can
+occur at different chronological positions, and turning the trace itself into a `Finset` would
+deduplicate them and corrupt the accounting. -/
+
+private theorem eventTag_le (T : MartinLofTest) : ∀ {R : ℕ} {e : RequestEvent},
+    e ∈ eventTrace T R → e.1 ≤ R := by
+  intro R
+  induction R with
+  | zero =>
+    intro e he
+    rw [eventTrace_zero, eventsAt, List.mem_flatMap] at he
+    obtain ⟨m, hm, hme⟩ := he
+    rw [List.mem_range] at hm
+    rw [List.mem_map] at hme
+    obtain ⟨τ, -, rfl⟩ := hme
+    omega
+  | succ R ih =>
+    intro e he
+    rw [eventTrace_succ, List.mem_append] at he
+    rcases he with he' | he'
+    · exact (ih he').trans (Nat.le_succ R)
+    · rw [eventsAt, List.mem_flatMap] at he'
+      obtain ⟨m, hm, hme⟩ := he'
+      rw [List.mem_range] at hm
+      rw [List.mem_map] at hme
+      obtain ⟨τ, -, rfl⟩ := hme
+      omega
+
+private theorem totalRequestWeight_regroup : ∀ {L : List RequestEvent} {R : ℕ},
+    (∀ e ∈ L, e.1 ≤ R) →
+    totalRequestWeight (L.map Prod.snd)
+      = ∑ n ∈ Finset.range (R + 1),
+          totalRequestWeight ((L.filter fun e ↦ decide (e.1 = n)).map Prod.snd) := by
+  intro L
+  induction L with
+  | nil =>
+    intro R _
+    rw [List.map_nil, totalRequestWeight_nil]
+    simp
+  | cons e L ih =>
+    intro R h
+    have hstep : ∀ n : ℕ,
+        totalRequestWeight (((e :: L).filter fun f ↦ decide (f.1 = n)).map Prod.snd)
+          = (if e.1 = n then e.2.weight else 0)
+            + totalRequestWeight ((L.filter fun f ↦ decide (f.1 = n)).map Prod.snd) := by
+      intro n
+      rw [List.filter_cons]
+      by_cases he : e.1 = n
+      · rw [if_pos (by simp [he]), if_pos he, List.map_cons, totalRequestWeight, List.map_cons,
+          List.sum_cons, ← totalRequestWeight]
+      · rw [if_neg (by simp [he]), if_neg he, zero_add]
+    rw [List.map_cons, totalRequestWeight, List.map_cons, List.sum_cons, ← totalRequestWeight,
+      ih fun f hf ↦ h f (List.mem_cons_of_mem e hf), Finset.sum_congr rfl (fun n _ ↦ hstep n),
+      Finset.sum_add_distrib]
+    congr 1
+    rw [Finset.sum_ite_eq (Finset.range (R + 1)) e.1 (fun _ ↦ e.2.weight),
+      if_pos (Finset.mem_range.mpr (Nat.lt_succ_of_le (h e List.mem_cons_self)))]
+
+private theorem totalRequestWeight_requestTraceStage (T : MartinLofTest) (R : ℕ) :
+    totalRequestWeight (requestTraceStage T R)
+      = ∑ n ∈ Finset.range (R + 1),
+          totalRequestWeight ((levelOutputs T R n).map
+            fun τ ↦ (⟨τ.length - n, τ⟩ : KraftRequest)) := by
+  rw [requestTraceStage, totalRequestWeight_regroup (fun e he ↦ eventTag_le T he)]
+  refine Finset.sum_congr rfl fun n _ ↦ ?_
+  rw [filter_eventTrace_eq_levelRequests, List.map_map]
+  rfl
+
+private theorem geom_half_sum_add (N : ℕ) :
+    (∑ n ∈ Finset.range N, (2⁻¹ : ℚ≥0) ^ (n + 1)) + (2⁻¹ : ℚ≥0) ^ N = 1 := by
+  induction N with
+  | zero => simp
+  | succ N ih =>
+    rw [Finset.sum_range_succ, add_assoc, pow_succ_add_pow_succ, ih]
+
+theorem totalRequestWeight_requestTraceStage_le (T : MartinLofTest) (R : ℕ) :
+    totalRequestWeight (requestTraceStage T R) ≤ 1 := by
+  rw [totalRequestWeight_requestTraceStage]
+  calc ∑ n ∈ Finset.range (R + 1),
+        totalRequestWeight ((levelOutputs T R n).map fun τ ↦ (⟨τ.length - n, τ⟩ : KraftRequest))
+      ≤ ∑ n ∈ Finset.range (R + 1), (2⁻¹ : ℚ≥0) ^ (n + 1) :=
+        Finset.sum_le_sum fun n _ ↦ levelRequestWeight_le T R n
+    _ ≤ (∑ n ∈ Finset.range (R + 1), (2⁻¹ : ℚ≥0) ^ (n + 1)) + (2⁻¹ : ℚ≥0) ^ (R + 1) := le_self_add
+    _ = 1 := geom_half_sum_add (R + 1)
+
+/-! ## The trace, and coverage -/
+
+/-- **The request trace of a Martin-Löf test.** -/
+def MartinLofTest.kraftRequestTrace (T : MartinLofTest) : KraftRequestTrace where
+  stage := requestTraceStage T
+  stage_prefix := fun h ↦ requestTraceStage_prefix T h
+  primrec_stage := primrec_requestTraceStage T
+  weight_le := totalRequestWeight_requestTraceStage_le T
+
+/-- **Coverage.** Every point captured at level `2n+1` lies inside a cylinder that was requested,
+at exactly the length the accounting assumed. This is the seam from captured points to short
+machine descriptions. -/
+theorem exists_request_of_mem_denote (T : MartinLofTest) {x : Cantor} {n : ℕ}
+    (hx : x ∈ T.openCode.denote (2 * n + 1)) :
+    ∃ r : KraftRequest, (∃ R, r ∈ T.kraftRequestTrace.stage R) ∧
+      x ∈ cylinder r.output ∧ r.length = r.output.length - n := by
+  obtain ⟨s, hs⟩ := UniformOpenCode.mem_denote.mp hx
+  have hxR : x ∈ T.openCode.stageSet (2 * n + 1) (max n s) :=
+    UniformOpenCode.stageSet_mono (le_max_right n s) hs
+  rw [← cylinderUnion_levelOutputs T (le_max_left n s)] at hxR
+  obtain ⟨τ, hτ, hxτ⟩ := mem_cylinderUnion.mp hxR
+  rw [List.mem_toFinset] at hτ
+  refine ⟨⟨τ.length - n, τ⟩, ⟨max n s, ?_⟩, hxτ, rfl⟩
+  have hev : ((n, (⟨τ.length - n, τ⟩ : KraftRequest)) : RequestEvent)
+      ∈ (eventTrace T (max n s)).filter fun e ↦ decide (e.1 = n) := by
+    rw [filter_eventTrace_eq_levelRequests]
+    exact List.mem_map_of_mem hτ
+  have hmem : ((n, (⟨τ.length - n, τ⟩ : KraftRequest)) : RequestEvent)
+      ∈ eventTrace T (max n s) := List.mem_of_mem_filter hev
+  exact List.mem_map_of_mem hmem
+
 end AlgorithmicRandomness
