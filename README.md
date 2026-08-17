@@ -88,7 +88,8 @@ and measures. Uniform constructions produce genuine program codes rather than on
 accompanied by abstract computability predicates.
 
 See [docs/architecture.md](docs/architecture.md) for the design decisions behind this and why
-they are load-bearing.
+they are load-bearing, and [docs/prefix-free-machines.md](docs/prefix-free-machines.md) for how a
+prefix-free machine is represented and the three ways one is built.
 
 The source is organized by mathematical layer:
 
@@ -100,6 +101,7 @@ The source is organized by mathematical layer:
 | `Randomness/` | Martin-Löf and Schnorr tests, and randomness implications |
 | `Martingale/` | Tree martingales, Ville's inequality, computable and savings martingales |
 | `Analysis/` | Dyadic intervals, cumulative functions, computable Lipschitz functions |
+| `Complexity/` | Prefix-free machines, the universal machine, Kraft–Chaitin allocation |
 
 ## Using the library
 

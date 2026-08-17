@@ -41,3 +41,4 @@ import AlgorithmicRandomness.Complexity.Universal
 import AlgorithmicRandomness.Complexity.PrefixComplexity
 import AlgorithmicRandomness.Complexity.Incompressible
 import AlgorithmicRandomness.Complexity.KraftChaitin
+import AlgorithmicRandomness.Complexity.TestRequests
