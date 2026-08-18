@@ -212,7 +212,8 @@ constructions built on it.
 These are enforced policies rather than periodic observations. CI builds the public spine with
 warnings as errors and requires the experimental library to typecheck under the same linter
 set, rejects proof placeholders in the public spine, enforces the experimental dependency
-boundary, and audits the axiom policy by sweeping every declaration in the public import spine
+boundary — scanning comment- and string-stripped sources, with nested block comments handled, so
+that neither a `sorry` nor an import can hide inside a comment — and audits the axiom policy by sweeping every declaration in the public import spine
 — a sweep rather than a curated list, so a new declaration cannot introduce an axiom by being
 forgotten. Key executable
 definitions carry compile-time evaluation checks, so the executable layer is exercised and not

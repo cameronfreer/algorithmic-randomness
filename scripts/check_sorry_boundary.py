@@ -12,7 +12,10 @@ Policy:
    reviewable event: a file appearing in the transitive closure of
    `AlgorithmicRandomness.lean` is a claim that it is finished.
 
-This script checks 1 and 2. It computes the import closure from the source text rather
+This script enforces 1 and 2. Comments and string literals are stripped before scanning, with
+nested block comments handled, so neither an `import` nor a `sorry` can hide inside a comment and
+neither can be invented by one inside a string. It computes the import closure from the source text
+rather
 than from build artefacts, so it works on a clean checkout and cannot be fooled by a
 stale `.lake`.
 
@@ -32,10 +35,74 @@ EXPERIMENTAL_PREFIX = "AlgorithmicRandomnessExperimental"
 # `sorry` and friends as whole words. `sorryAx` is the kernel-level form; `admit` is the
 # tactic alias. Substring matches like `sorryFree` are excluded by the word boundaries.
 SORRY_RE = re.compile(r"\b(sorry|sorryAx|admit)\b")
-IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z0-9_.]+)")
-# A line comment or the opening of a block comment; enough to skip prose mentions of the
-# word "sorry" in docstrings, which are legitimate (this file's own policy text, say).
-LINE_COMMENT_RE = re.compile(r"^\s*(--|/-|\*|-/)")
+# Several imports may appear on one line, so this is scanned with `finditer`, not matched once.
+IMPORT_RE = re.compile(r"(?:^|\s)import\s+([A-Za-z0-9_.]+)")
+
+
+def strip_comments(text: str) -> list[str]:
+    """Blank out Lean comments, preserving line count and column positions.
+
+    Handles nested block comments (`/- /- -/ -/`, and so docstrings `/-- ... -/` too), line
+    comments, and string literals, so that neither an `import` nor a `sorry` can hide inside a
+    comment and neither can be invented by one appearing inside a string.
+    """
+    lines: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    in_string = False
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if ch == "\n":
+            lines.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        if depth > 0:
+            if ch == "/" and nxt == "-":
+                depth += 1
+                cur.append("  ")
+                i += 2
+                continue
+            if ch == "-" and nxt == "/":
+                depth -= 1
+                cur.append("  ")
+                i += 2
+                continue
+            cur.append(" ")
+            i += 1
+            continue
+        if in_string:
+            if ch == "\\":
+                cur.append("  ")
+                i += 2
+                continue
+            if ch == '"':
+                in_string = False
+            cur.append(" ")
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            cur.append(" ")
+            i += 1
+            continue
+        if ch == "-" and nxt == "-":
+            j = text.find("\n", i)
+            j = n if j == -1 else j
+            cur.append(" " * (j - i))
+            i = j
+            continue
+        if ch == "/" and nxt == "-":
+            depth += 1
+            cur.append("  ")
+            i += 2
+            continue
+        cur.append(ch)
+        i += 1
+    lines.append("".join(cur))
+    return lines
 
 
 def repo_root() -> Path:
@@ -60,10 +127,8 @@ def module_path(root: Path, module: str) -> Path | None:
 
 def imports_of(path: Path) -> list[str]:
     out = []
-    for line in path.read_text().splitlines():
-        m = IMPORT_RE.match(line)
-        if m:
-            out.append(m.group(1))
+    for line in strip_comments(path.read_text()):
+        out.extend(m.group(1) for m in IMPORT_RE.finditer(line))
     return out
 
 
@@ -85,9 +150,7 @@ def closure(root: Path) -> set[str]:
 
 def sorries_in(path: Path) -> list[tuple[int, str]]:
     hits = []
-    for i, line in enumerate(path.read_text().splitlines(), 1):
-        if LINE_COMMENT_RE.match(line):
-            continue
+    for i, line in enumerate(strip_comments(path.read_text()), 1):
         if SORRY_RE.search(line):
             hits.append((i, line.strip()))
     return hits
