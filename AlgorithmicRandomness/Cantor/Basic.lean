@@ -95,6 +95,22 @@ theorem length_of_mem_wordsOfLength {n : ℕ} {σ : BitString} (h : σ ∈ words
     have hτn := ih hτ
     rcases List.mem_pair.mp hmem with rfl | rfl <;> simp [hτn]
 
+/-- The enumeration is duplicate-free. Proved here from the branching structure rather than by
+transporting an indexing bijection, so that consumers below the analysis layer can use it. -/
+theorem nodup_wordsOfLength (n : ℕ) : (wordsOfLength n).Nodup := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [wordsOfLength_succ, List.nodup_flatMap]
+    refine ⟨fun σ _ ↦ by simp, ?_⟩
+    refine ih.imp_of_mem fun {σ τ} hσ hτ hne ↦ ?_
+    have hlen : σ.length = τ.length := by
+      rw [length_of_mem_wordsOfLength hσ, length_of_mem_wordsOfLength hτ]
+    refine List.disjoint_left.mpr fun ρ hρσ hρτ ↦ hne ?_
+    rw [List.mem_pair] at hρσ hρτ
+    rcases hρσ with rfl | rfl <;> rcases hρτ with h | h <;>
+      exact (List.append_inj_left h hlen)
+
 theorem mem_wordsOfLength_length (σ : BitString) : σ ∈ wordsOfLength σ.length := by
   induction σ using List.reverseRecOn with
   | nil => simp

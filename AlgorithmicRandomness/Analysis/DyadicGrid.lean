@@ -270,11 +270,6 @@ theorem map_gridIndex_wordsOfLength (n : ℕ) :
     congr 1
     omega
 
-/-- Distinctness, an immediate consequence. -/
-theorem nodup_wordsOfLength (n : ℕ) : (wordsOfLength n).Nodup := by
-  have h := map_gridIndex_wordsOfLength n
-  exact List.Nodup.of_map gridIndex (by rw [h]; exact List.nodup_range)
-
 /-! ## Lookup is inverse to indexing
 
 The order certificate says the index map is a bijection onto `Fin (2 ^ n)`; these two lemmas are
