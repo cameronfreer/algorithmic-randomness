@@ -592,24 +592,5 @@ structure PrefixFreeMachine where
 noncomputable def PrefixFreeMachine.ofCode (c : Nat.Partrec.Code) : PrefixFreeMachine :=
   ⟨PrefixMachine.sanitizeCode c, PrefixMachine.isPrefixFreeMachine_sanitizeCode c⟩
 
-/-! ## Canonical inputs -/
-
-/-- The bit string a natural encodes, if it is the canonical encoding of one. Guarding here keeps
-the raw program's behaviour aligned with the machine it interprets: without it the code would halt
-on non-canonical naturals that no stated theorem mentions, which is exactly the kind of extra
-behaviour that becomes relevant once outputs are manipulated as encoded descriptions. -/
-def canonicalBitString (m : ℕ) : Option BitString :=
-  (Encodable.decode m : Option BitString).bind fun ρ ↦
-    if Encodable.encode ρ = m then some ρ else none
-
-@[simp] theorem canonicalBitString_encode (ρ : BitString) :
-    canonicalBitString (Encodable.encode ρ) = some ρ := by
-  rw [canonicalBitString, Encodable.encodek, Option.bind_some, if_pos rfl]
-
-theorem primrec_canonicalBitString : Primrec canonicalBitString := by
-  refine Primrec.option_bind Primrec.decode ?_
-  exact Primrec.ite (Primrec.eq.comp (Primrec.encode.comp Primrec.snd) Primrec.fst)
-    (Primrec.option_some.comp Primrec.snd) (Primrec.const none)
-
 
 end AlgorithmicRandomness
