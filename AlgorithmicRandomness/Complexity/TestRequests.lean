@@ -382,12 +382,6 @@ private theorem prefixFree_levelOutputs (T : MartinLofTest) (R n : ℕ) :
   by_contra hne
   exact pairwise_incompat_pair (levelOutputs_pairwise T R n) hσ hτ hne (Or.inl hpre)
 
-private theorem coe_pow_inv_two' (k : ℕ) :
-    (((2⁻¹ : ℚ≥0) ^ k : ℚ≥0) : ℝ≥0∞) = (2⁻¹ : ℝ≥0∞) ^ k := by
-  rw [← ENNReal.coe_nnratCast]
-  push_cast
-  rfl
-
 private theorem listWeight_levelOutputs (T : MartinLofTest) (R n : ℕ) :
     listWeight (levelOutputs T R n)
       = if n ≤ R then T.openCode.stageWeight (2 * n + 1) R else 0 := by
@@ -436,9 +430,8 @@ does not appear again. -/
 private theorem stageWeight_le (T : MartinLofTest) (k s : ℕ) :
     T.openCode.stageWeight k s ≤ (2⁻¹ : ℚ≥0) ^ k := by
   have h := (UniformOpenCode.fairCoin_denote_le_iff T.openCode k _).mp (T.measure_le k) s
-  rw [← coe_pow_inv_two' k, ← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast,
-    ENNReal.coe_le_coe] at h
-  exact_mod_cast h
+  rw [← coe_pow_inv_two k, coe_le_coe_nnrat] at h
+  exact h
 
 private theorem length_ge_of_mem_levelOutputs (T : MartinLofTest) {R n : ℕ} (hn : n ≤ R)
     {τ : BitString} (hτ : τ ∈ levelOutputs T R n) : 2 * n + 1 ≤ τ.length := by

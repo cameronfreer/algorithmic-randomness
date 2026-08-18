@@ -202,12 +202,8 @@ theorem stageWeight_compress_le (c s : ℕ) : compressOpen.stageWeight c s ≤ 2
 `ℚ≥0`-to-`ℝ≥0∞` step has been a recurring source of elaboration failures. -/
 theorem coe_stageWeight_compress_le (c s : ℕ) :
     ((compressOpen.stageWeight c s : ℚ≥0) : ℝ≥0∞) ≤ (2⁻¹ : ℝ≥0∞) ^ c := by
-  have hpow : (((2⁻¹ : ℚ≥0) ^ c : ℚ≥0) : ℝ≥0∞) = (2⁻¹ : ℝ≥0∞) ^ c := by
-    rw [← ENNReal.coe_nnratCast]
-    push_cast
-    rfl
-  rw [← hpow, ← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ENNReal.coe_le_coe]
-  exact_mod_cast stageWeight_compress_le c s
+  rw [← coe_pow_inv_two c, coe_le_coe_nnrat]
+  exact stageWeight_compress_le c s
 
 noncomputable def compressTest : MartinLofTest where
   openCode := compressOpen

@@ -325,16 +325,6 @@ Trimming only removes cylinders (`denote_trim_subset`); every trimmed level obey
 budget, trimming changes nothing (`denote_trim_of_le`).
 -/
 
-private theorem coe_pow_inv_two (k : ℕ) :
-    (((2⁻¹ : ℚ≥0) ^ k : ℚ≥0) : ℝ≥0∞) = (2⁻¹ : ℝ≥0∞) ^ k := by
-  rw [← ENNReal.coe_nnratCast]
-  push_cast
-  rfl
-
-private theorem coe_le_coe_nnrat {a b : ℚ≥0} : ((a : ℝ≥0∞) ≤ (b : ℝ≥0∞)) ↔ a ≤ b := by
-  rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ENNReal.coe_le_coe]
-  exact_mod_cast Iff.rfl
-
 namespace UniformOpenCode
 
 /-- Trim the family denoted by `e` at offset `d`: level `n` is `e`'s level `n + d`, greedily

@@ -6,8 +6,11 @@ A Lean 4 library for algorithmic randomness on fair-coin Cantor space, built on
 [mathlib](https://github.com/leanprover-community/mathlib4).
 
 The library develops computability and measure theory together: effective objects are
-represented by **actual program codes**, equipped with executable finite approximations and
-correctness theorems connecting them to their set- and measure-theoretic denotations.
+represented by **actual program codes**, equipped with primitive recursive finite approximations
+and correctness theorems connecting them to their set- and measure-theoretic denotations. Where an
+approximation is built over an extracted code it is `Primrec` as a function without reducing in
+the kernel; where it is built from concrete data it also runs, and compile-time checks exercise
+it.
 
 ## Status
 
@@ -23,7 +26,7 @@ Established implications among randomness notions:
 | computably random | Schnorr random | simulation of the conditional-probability martingale |
 | Martin-Löf random | Schnorr random | structural, and also by composition |
 
-## Characterizations
+## Characterizations and analytic witnesses
 
 ### Levin–Schnorr
 
@@ -46,7 +49,7 @@ Both directions are proved. See
 [docs/prefix-free-machines.md](docs/prefix-free-machines.md) for how the two constructions behind
 them fit together.
 
-### Differentiability of computable Lipschitz functions
+### A nondifferentiability witness for computable Lipschitz functions
 
 The library's main application is one direction of the characterization of computable randomness
 by differentiability (Freer–Kjos-Hanssen–Nies–Stephan,

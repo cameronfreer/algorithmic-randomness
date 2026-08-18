@@ -145,6 +145,21 @@ end Examples
 
 /-! ## Exact weights -/
 
+/-! ### Casting exact weights into the measure
+
+Weights are exact in `ℚ≥0` and measures live in `ℝ≥0∞`, so every measure bound crosses once. These
+two bridges are that crossing; they are stated here rather than repeated at each use site. -/
+
+theorem coe_pow_inv_two (k : ℕ) :
+    (((2⁻¹ : ℚ≥0) ^ k : ℚ≥0) : ℝ≥0∞) = (2⁻¹ : ℝ≥0∞) ^ k := by
+  rw [← ENNReal.coe_nnratCast]
+  push_cast
+  rfl
+
+theorem coe_le_coe_nnrat {a b : ℚ≥0} : ((a : ℝ≥0∞) ≤ (b : ℝ≥0∞)) ↔ a ≤ b := by
+  rw [← ENNReal.coe_nnratCast, ← ENNReal.coe_nnratCast, ENNReal.coe_le_coe]
+  exact_mod_cast Iff.rfl
+
 /-- The dyadic weight `2⁻¹ ^ σ.length` of one cylinder, as an exact nonnegative rational. -/
 def BitString.weight (σ : BitString) : ℚ≥0 := 2⁻¹ ^ σ.length
 
