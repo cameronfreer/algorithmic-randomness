@@ -596,6 +596,28 @@ def MartinLofTest.kraftRequestTrace (T : MartinLofTest) : KraftRequestTrace wher
   primrec_stage := primrec_requestTraceStage T
   weight_le := totalRequestWeight_requestTraceStage_le T
 
+/-- The common core of the coverage theorems: a captured point lies in a requested cylinder whose
+length the accounting already bounded below. -/
+private theorem exists_levelOutput_of_mem_denote (T : MartinLofTest) {x : Cantor} {n : ℕ}
+    (hx : x ∈ T.openCode.denote (2 * n + 1)) :
+    ∃ (R : ℕ) (τ : BitString), τ ∈ levelOutputs T R n ∧ x ∈ cylinder τ ∧ n ≤ τ.length := by
+  obtain ⟨s, hs⟩ := UniformOpenCode.mem_denote.mp hx
+  have hxR : x ∈ T.openCode.stageSet (2 * n + 1) (max n s) :=
+    UniformOpenCode.stageSet_mono (le_max_right n s) hs
+  rw [← cylinderUnion_levelOutputs T (le_max_left n s)] at hxR
+  obtain ⟨τ, hτ, hxτ⟩ := mem_cylinderUnion.mp hxR
+  rw [List.mem_toFinset] at hτ
+  exact ⟨max n s, τ, hτ, hxτ, le_length_of_mem_levelOutputs T (le_max_left n s) hτ⟩
+
+private theorem mem_stage_of_mem_levelOutputs (T : MartinLofTest) {R n : ℕ} {τ : BitString}
+    (hτ : τ ∈ levelOutputs T R n) :
+    (⟨τ.length - n, τ⟩ : KraftRequest) ∈ T.kraftRequestTrace.stage R := by
+  have hev : ((n, (⟨τ.length - n, τ⟩ : KraftRequest)) : RequestEvent)
+      ∈ (eventTrace T R).filter fun e ↦ decide (e.1 = n) := by
+    rw [filter_eventTrace_eq_levelRequests]
+    exact List.mem_map_of_mem hτ
+  exact List.mem_map_of_mem (List.mem_of_mem_filter hev)
+
 /-- **Coverage.** Every point captured at level `2n+1` lies inside a cylinder that was requested,
 at exactly the length the accounting assumed. This is the seam from captured points to short
 machine descriptions. -/
@@ -603,19 +625,17 @@ theorem exists_request_of_mem_denote (T : MartinLofTest) {x : Cantor} {n : ℕ}
     (hx : x ∈ T.openCode.denote (2 * n + 1)) :
     ∃ r : KraftRequest, (∃ R, r ∈ T.kraftRequestTrace.stage R) ∧
       x ∈ cylinder r.output ∧ r.length = r.output.length - n := by
-  obtain ⟨s, hs⟩ := UniformOpenCode.mem_denote.mp hx
-  have hxR : x ∈ T.openCode.stageSet (2 * n + 1) (max n s) :=
-    UniformOpenCode.stageSet_mono (le_max_right n s) hs
-  rw [← cylinderUnion_levelOutputs T (le_max_left n s)] at hxR
-  obtain ⟨τ, hτ, hxτ⟩ := mem_cylinderUnion.mp hxR
-  rw [List.mem_toFinset] at hτ
-  refine ⟨⟨τ.length - n, τ⟩, ⟨max n s, ?_⟩, hxτ, rfl⟩
-  have hev : ((n, (⟨τ.length - n, τ⟩ : KraftRequest)) : RequestEvent)
-      ∈ (eventTrace T (max n s)).filter fun e ↦ decide (e.1 = n) := by
-    rw [filter_eventTrace_eq_levelRequests]
-    exact List.mem_map_of_mem hτ
-  have hmem : ((n, (⟨τ.length - n, τ⟩ : KraftRequest)) : RequestEvent)
-      ∈ eventTrace T (max n s) := List.mem_of_mem_filter hev
-  exact List.mem_map_of_mem hmem
+  obtain ⟨R, τ, hτ, hxτ, -⟩ := exists_levelOutput_of_mem_denote T hx
+  exact ⟨⟨τ.length - n, τ⟩, ⟨R, mem_stage_of_mem_levelOutputs T hτ⟩, hxτ, rfl⟩
+
+/-- The subtraction-free form. `ℕ` subtraction truncates, so downstream arithmetic wants this one:
+the length bound proved during the partition is exactly what cancels it. -/
+theorem exists_request_of_mem_denote_add (T : MartinLofTest) {x : Cantor} {n : ℕ}
+    (hx : x ∈ T.openCode.denote (2 * n + 1)) :
+    ∃ r : KraftRequest, (∃ R, r ∈ T.kraftRequestTrace.stage R) ∧
+      x ∈ cylinder r.output ∧ r.length + n = r.output.length := by
+  obtain ⟨R, τ, hτ, hxτ, hlen⟩ := exists_levelOutput_of_mem_denote T hx
+  exact ⟨⟨τ.length - n, τ⟩, ⟨R, mem_stage_of_mem_levelOutputs T hτ⟩, hxτ,
+    Nat.sub_add_cancel hlen⟩
 
 end AlgorithmicRandomness
