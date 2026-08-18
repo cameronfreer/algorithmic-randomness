@@ -23,6 +23,29 @@ Established implications among randomness notions:
 | computably random | Schnorr random | simulation of the conditional-probability martingale |
 | Martin-Löf random | Schnorr random | structural, and also by composition |
 
+## Characterizations
+
+### Levin–Schnorr
+
+Martin-Löf randomness is incompressibility of initial segments:
+
+```lean
+IsMartinLofRandom x ↔ ∃ c, ∀ n, n ≤ prefixComplexity (initSeg x n) + c
+```
+
+`prefixComplexity τ` is the length of a shortest description of `τ` under an optimal universal
+prefix-free machine, which the library constructs as one actual program code rather than
+postulating. The additive constant absorbs the choice of description machine: any prefix-free
+machine is simulated by the universal one with bounded overhead, so a different choice shifts `c`
+and nothing else.
+
+The statement is deliberately subtraction-free. Phrasing the bound with `n - c` on the left would
+introduce truncated natural subtraction and make the small-`n` cases hold for the wrong reason.
+
+Both directions are proved. See
+[docs/prefix-free-machines.md](docs/prefix-free-machines.md) for how the two constructions behind
+them fit together.
+
 ### Differentiability of computable Lipschitz functions
 
 The library's main application is one direction of the characterization of computable randomness
@@ -73,6 +96,8 @@ layer is exercised rather than merely typechecked.
 - Computable Lipschitz functions with exact rational values at dyadic points, and the
   nondifferentiability theorem above.
 - Binary expansions of reals, with `realOf` surjective onto the unit interval.
+- Prefix-free machines as coded objects, an optimal universal machine built as one actual program,
+  prefix complexity with primitive recursive finite approximations, and Kraft–Chaitin allocation.
 
 ## Architecture
 

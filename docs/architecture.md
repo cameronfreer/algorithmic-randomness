@@ -187,6 +187,26 @@ it would be wrong for the second case.
 Similarly, totality of a program is carried as asserted data alongside the code, never claimed
 to be effectively decidable, and bundles carrying it are deliberately not enumerable.
 
+## Complexity is relative to one machine, and accounting is separated from execution
+
+Prefix complexity is defined against a *single* optimal universal prefix-free machine, constructed
+as one actual program code. It is not defined as an infimum over a class of machines, and no
+"machine" abstraction is introduced. Optimality is then a theorem about that code, and it is what
+lets any other prefix-free machine's descriptions bound the fixed complexity function — which is
+the only reason a machine built to satisfy a request stream says anything about complexity at all.
+
+The construction that produces such request streams forced a second separation. Requests are
+generated *chronologically*, because enumeration is append-only and monotonicity of the trace has
+to be definitional; but their total weight is bounded *by level*, because that is where the
+geometric series lives. Reconciling the two orders after the fact would be a permutation argument
+over a list with genuine repetitions. Instead each request carries a private origin tag, erased at
+the public boundary: chronology stays definitional, and the weight proof regroups by tag with the
+list structure intact. Deduplicating the trace at any point would be wrong, since the same request
+can legitimately arise at different stages.
+
+See [prefix-free-machines.md](prefix-free-machines.md) for the representation and the three
+constructions built on it.
+
 ## Verification discipline
 
 These are enforced policies rather than periodic observations. CI builds the public spine with

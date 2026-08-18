@@ -205,5 +205,36 @@ Three constructions produce that bundle: the **sanitizer**, from an arbitrary co
 universal interpreter**, which is optimal; and the **Kraft–Chaitin allocator**, from a request
 stream inside the Kraft budget.
 
+## How this supports Levin–Schnorr
+
+The three constructions are not independent curiosities; each carries one part of
+
+```lean
+IsMartinLofRandom x ↔ ∃ c, ∀ n, n ≤ prefixComplexity (initSeg x n) + c
+```
+
+**The sanitizer gives a universal machine at all.** Prefix-freeness cannot be tested, so the
+tagged interpreter has to run each candidate through the sanitizer to be sure its own domain stays
+prefix-free. The result is one actual program code, and `prefixComplexity` is defined relative to
+it — not relative to an abstract class of machines.
+
+**The finite Kraft inequality gives the easy direction.** The strings with `K(τ) + c < |τ|` form a
+Martin-Löf test. Its measure bound at each stage is the finite Kraft inequality applied to
+shortest descriptions, which are distinct across distinct outputs because a description determines
+its output. A random point escapes some level, and that level is the constant.
+
+**Finite-open differences and Kraft–Chaitin allocation give the hard direction.** A test capturing
+`x` is turned into a request stream: at level `2n+1`, each freshly enumerated cylinder `τ` asks
+for a description of length `|τ| - n`. Emitting *differences* between successive stages rather
+than the stages themselves is what keeps the total weight from overcounting, and the odd
+reindexing is what makes it converge. The allocator then realizes those requests as an actual
+prefix-free machine.
+
+**Optimality closes the loop.** That allocated machine is *not* the universal one, so its
+codewords say nothing about `prefixComplexity` by themselves. Optimality is what transfers a
+description of length `ℓ` on the allocated machine to the bound `prefixComplexity τ ≤ ℓ + d` on
+the fixed universal machine. Without it the hard direction would produce a machine with no
+connection to the complexity function it is supposed to bound.
+
 See [architecture.md](architecture.md) for the design decisions these rest on, in particular why
 codes and denotations stay separate and where uniformity is load-bearing.
