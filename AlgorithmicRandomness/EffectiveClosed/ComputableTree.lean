@@ -4,9 +4,11 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Cantor.FiniteOpen
+import AlgorithmicRandomness.Coding.FiniteOpen
 import AlgorithmicRandomness.Coding.NNRatCode
 import AlgorithmicRandomness.Coding.TotalCode
 import AlgorithmicRandomness.EffectiveOpen.Code
+import AlgorithmicRandomness.Randomness.Schnorr
 
 /-!
 # Computable trees and effectively closed classes
@@ -508,6 +510,181 @@ theorem paths_subset_nullCoverOpen {hnull : fairCoin T.toCantorTree.paths = 0} (
     T.toCantorTree.paths ⊆ (T.nullCoverOpen hnull).denote k := by
   rw [denote_nullCoverOpen, paths_eq_iInter_levelCover]
   exact Set.iInter_subset _ _
+
+/-! ## The completion stage
+
+Each level of the cover is a *finite* union, so its enumeration finishes: past some stage the
+staged set is already the whole level, and the Schnorr tail is not merely small but empty. The
+completion test is a comparison of two natural numbers — the number of distinct strings enumerated
+so far against the survivor count at the selected level — and never rebuilds the level front. -/
+
+/-- Among strings of one common length, prefix-minimality is vacuous, so the minimal-nodup list
+counts exactly the distinct strings. -/
+private theorem minimalNodup_length_eq_card {L : List BitString} {D : ℕ}
+    (hL : ∀ σ ∈ L, σ.length = D) : (minimalNodup L).length = L.toFinset.card := by
+  rw [← List.toFinset_card_of_nodup (minimalNodup_nodup L)]
+  congr 1
+  ext σ
+  simp only [List.mem_toFinset, mem_minimalNodup]
+  exact ⟨fun h ↦ h.1, fun h ↦ ⟨h, fun τ hτ hpre ↦
+    hpre.eq_of_length ((hL τ hτ).trans (hL σ h).symm)⟩⟩
+
+/-- A finite list of enumerated strings is reached by a single stage. -/
+private theorem exists_stage_of_forall_enumerates {c : Nat.Partrec.Code} {n : ℕ} :
+    ∀ L : List BitString, (∀ σ ∈ L, EnumeratesString c n σ) →
+      ∃ s, ∀ σ ∈ L, σ ∈ stringStage c n s
+  | [], _ => ⟨0, by simp⟩
+  | a :: M, hL => by
+    obtain ⟨sa, hsa⟩ := stringStage_complete (hL a (List.mem_cons_self ..))
+    obtain ⟨sM, hsM⟩ := exists_stage_of_forall_enumerates M
+      fun σ hσ ↦ hL σ (List.mem_cons_of_mem _ hσ)
+    refine ⟨max sa sM, fun σ hσ ↦ ?_⟩
+    rcases List.mem_cons.mp hσ with rfl | hσ
+    · exact stringStage_mono (le_max_left _ _) hsa
+    · exact stringStage_mono (le_max_right _ _) (hsM σ hσ)
+
+variable (T)
+
+/-- The completion test at stage `s`: as many distinct strings enumerated as there are survivors
+at the selected level. -/
+noncomputable def completeAt (hnull : fairCoin T.toCantorTree.paths = 0) (n s : ℕ) : Bool :=
+  decide ((minimalNodup (stringStageList (T.coverCode hnull) n s)).length
+    = survivorCount T (T.selectedLevel hnull n) (2 ^ T.selectedLevel hnull n))
+
+variable {T}
+
+theorem length_of_mem_stringStageList_nullCover {hnull : fairCoin T.toCantorTree.paths = 0}
+    {n s : ℕ} {σ : BitString} (h : σ ∈ stringStageList (T.coverCode hnull) n s) :
+    σ.length = T.selectedLevel hnull n := by
+  have hmem : σ ∈ stringStage (T.coverCode hnull) n s := by
+    rw [← stringStageList_toFinset]; exact List.mem_toFinset.mpr h
+  exact length_of_mem_levelFront (enumeratesString_coverCode.mp (stringStage_sound hmem))
+
+theorem stage_nullCoverOpen_subset {hnull : fairCoin T.toCantorTree.paths = 0} (n s : ℕ) :
+    (T.nullCoverOpen hnull).stage n s ⊆ (T.levelFront (T.selectedLevel hnull n)).toFinset := by
+  intro σ hσ
+  exact List.mem_toFinset.mpr (enumeratesString_coverCode.mp (stringStage_sound hσ))
+
+/-- **The completion seam.** The test fires exactly when the stage already is the whole level. -/
+theorem completeAt_iff {hnull : fairCoin T.toCantorTree.paths = 0} {n s : ℕ} :
+    T.completeAt hnull n s = true ↔
+      (T.nullCoverOpen hnull).stage n s = (T.levelFront (T.selectedLevel hnull n)).toFinset := by
+  have hbridge : (minimalNodup (stringStageList (T.coverCode hnull) n s)).length
+      = ((T.nullCoverOpen hnull).stage n s).card := by
+    simp only [UniformOpenCode.stage, nullCoverOpen_program, ← stringStageList_toFinset]
+    exact minimalNodup_length_eq_card fun _ hσ ↦ length_of_mem_stringStageList_nullCover hσ
+  have hcard : (T.levelFront (T.selectedLevel hnull n)).toFinset.card
+      = survivorCount T (T.selectedLevel hnull n) (2 ^ T.selectedLevel hnull n) := by
+    rw [List.toFinset_card_of_nodup (nodup_levelFront T _), survivorCount_eq_length]
+  rw [completeAt, decide_eq_true_iff, hbridge, ← hcard]
+  exact ⟨fun h ↦ Finset.eq_of_subset_of_card_le (stage_nullCoverOpen_subset n s) (le_of_eq h.symm),
+    fun h ↦ by rw [h]⟩
+
+variable (T)
+
+/-- The search for a stage at which the level is fully enumerated. -/
+noncomputable def completeStageSearch (hnull : fairCoin T.toCantorTree.paths = 0) (n : ℕ) :
+    Part ℕ :=
+  Nat.rfind fun s ↦ Part.some (T.completeAt hnull n s)
+
+-- The two extracted programs are `Classical.choose` terms; sealing them keeps the computability
+-- proof below from unfolding them.
+attribute [local irreducible] ComputableTree.coverCode ComputableTree.selectedLevel
+
+theorem partrec_completeStageSearch (hnull : fairCoin T.toCantorTree.paths = 0) :
+    Nat.Partrec fun m ↦ T.completeStageSearch hnull m.unpair.1 := by
+  have hsel : Computable fun w : ℕ × ℕ ↦ T.selectedLevel hnull w.1.unpair.1 :=
+    (T.computable_selectedLevel hnull).comp
+      (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)).to_comp
+  have hpow : Primrec fun m : ℕ ↦ 2 ^ m :=
+    (Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) Primrec.id
+  have hright : Computable fun w : ℕ × ℕ ↦
+      survivorCount T (T.selectedLevel hnull w.1.unpair.1)
+        (2 ^ T.selectedLevel hnull w.1.unpair.1) :=
+    T.computable_survivorCount.comp (Computable.pair hsel (hpow.to_comp.comp hsel))
+  have hleft : Computable fun w : ℕ × ℕ ↦
+      (minimalNodup (stringStageList (T.coverCode hnull) w.1.unpair.1 w.2)).length :=
+    (Primrec.list_length.comp (primrec_minimalNodup.comp
+      (primrec_stringStageList.comp (Primrec.pair (Primrec.pair (Primrec.const _)
+        (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst))) Primrec.snd)))).to_comp
+  have heq : Computable fun p : ℕ × ℕ ↦ decide (p.1 = p.2) :=
+    (primrecPred_iff_primrec_decide.mp Primrec.eq).to_comp
+  have hpair : Computable fun w : ℕ × ℕ ↦
+      ((minimalNodup (stringStageList (T.coverCode hnull) w.1.unpair.1 w.2)).length,
+        survivorCount T (T.selectedLevel hnull w.1.unpair.1)
+          (2 ^ T.selectedLevel hnull w.1.unpair.1)) :=
+    Computable.pair hleft hright
+  -- The pair is named rather than inlined: composing against the expected type would leave the
+  -- argument a metavariable under a projection and send unification into the two large terms.
+  have hcomplete : Computable fun w : ℕ × ℕ ↦ T.completeAt hnull w.1.unpair.1 w.2 :=
+    (heq.comp hpair).of_eq fun _ ↦ rfl
+  exact Partrec.nat_iff.mp (Partrec.rfind (Computable₂.partrec₂ hcomplete.to₂))
+
+theorem completeStageSearch_dom (hnull : fairCoin T.toCantorTree.paths = 0) (n : ℕ) :
+    (T.completeStageSearch hnull n).Dom := by
+  obtain ⟨s, hs⟩ := exists_stage_of_forall_enumerates (c := T.coverCode hnull) (n := n)
+    (T.levelFront (T.selectedLevel hnull n)) fun _ hσ ↦ enumeratesString_coverCode.mpr hσ
+  have hfire : T.completeAt hnull n s = true :=
+    completeAt_iff.mpr (Finset.Subset.antisymm (stage_nullCoverOpen_subset n s)
+      fun σ hσ ↦ hs σ (List.mem_toFinset.mp hσ))
+  obtain ⟨m, hm, -⟩ := Nat.rfind_min' (p := fun s ↦ T.completeAt hnull n s) hfire
+  exact Part.dom_iff_mem.mpr ⟨m, hm⟩
+
+/-- The modulus code: on `Nat.pair n k` it returns a stage at which level `n` is complete, so the
+value does not depend on `k`. -/
+noncomputable def completeStageCode (hnull : fairCoin T.toCantorTree.paths = 0) :
+    NatFunctionCode :=
+  NatFunctionCode.ofPartrecTotal (T.partrec_completeStageSearch hnull)
+    fun m ↦ T.completeStageSearch_dom hnull m.unpair.1
+
+/-- The stage itself. Every semantic result below is stated against this, not against the code. -/
+noncomputable def completeStage (hnull : fairCoin T.toCantorTree.paths = 0) (n : ℕ) : ℕ :=
+  (T.completeStageSearch hnull n).get (T.completeStageSearch_dom hnull n)
+
+variable {T}
+
+theorem apply₂_completeStageCode {hnull : fairCoin T.toCantorTree.paths = 0} (n k : ℕ) :
+    (T.completeStageCode hnull).apply₂ n k = T.completeStage hnull n := by
+  have hmem : ∀ m : ℕ, (T.completeStageCode hnull).toFun m
+      ∈ T.completeStageSearch hnull m.unpair.1 := fun m ↦ by
+    rw [completeStageCode, NatFunctionCode.ofPartrecTotal_toFun]
+    exact Part.get_mem _
+  have h := hmem (Nat.pair n k)
+  simp only [Nat.unpair_pair] at h
+  exact Part.mem_unique h (Part.get_mem _)
+
+theorem completeAt_completeStage {hnull : fairCoin T.toCantorTree.paths = 0} (n : ℕ) :
+    T.completeAt hnull n (T.completeStage hnull n) = true := by
+  simpa [completeStage] using Nat.rfind_spec (Part.get_mem (T.completeStageSearch_dom hnull n))
+
+/-- **The stage is exact**, not merely close: at the completion stage the staged set is the whole
+level of the cover. -/
+theorem stageSet_completeStage {hnull : fairCoin T.toCantorTree.paths = 0} (n : ℕ) :
+    (T.nullCoverOpen hnull).stageSet n (T.completeStage hnull n)
+      = (T.nullCoverOpen hnull).denote n := by
+  rw [UniformOpenCode.stageSet, completeAt_iff.mp (completeAt_completeStage n),
+    denote_nullCoverOpen, levelCover]
+
+/-! ## The Schnorr test -/
+
+/-- **Gate 3b.** A computable tree with null path class carries a Schnorr test whose levels are
+its own level covers. -/
+noncomputable def nullSchnorrTest (T : ComputableTree)
+    (hnull : fairCoin T.toCantorTree.paths = 0) : SchnorrTest where
+  openCode := T.nullCoverOpen hnull
+  measure_le := measure_nullCoverOpen_le
+  modulus := T.completeStageCode hnull
+  tail_le n k := by
+    rw [apply₂_completeStageCode, stageSet_completeStage, Set.sdiff_self, measure_empty]
+    exact zero_le
+
+@[simp] theorem nullSchnorrTest_openCode {hnull : fairCoin T.toCantorTree.paths = 0} :
+    (T.nullSchnorrTest hnull).openCode = T.nullCoverOpen hnull := rfl
+
+/-- Every path of the tree is captured by the test. -/
+theorem captures_nullSchnorrTest {hnull : fairCoin T.toCantorTree.paths = 0} {x : Cantor}
+    (hx : x ∈ T.toCantorTree.paths) : (T.nullSchnorrTest hnull).Captures x :=
+  fun n ↦ paths_subset_nullCoverOpen n hx
 
 end ComputableTree
 
