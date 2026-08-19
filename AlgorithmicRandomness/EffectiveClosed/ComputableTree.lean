@@ -6,6 +6,7 @@ Authors: Cameron Freer
 import AlgorithmicRandomness.Cantor.FiniteOpen
 import AlgorithmicRandomness.Coding.NNRatCode
 import AlgorithmicRandomness.Coding.TotalCode
+import AlgorithmicRandomness.EffectiveOpen.Code
 
 /-!
 # Computable trees and effectively closed classes
@@ -334,6 +335,179 @@ theorem exists_levelWeight_le_of_null (T : ComputableTree)
   refine ⟨n, ?_⟩
   rw [← coe_le_coe_nnrat, coe_pow_inv_two]
   exact le_trans (le_of_eq (fairCoin_levelCover T n).symm) hn
+
+end ComputableTree
+
+/-! ## Selecting a thin level
+
+For a null tree the level weights tend to zero, so a level thin enough for any requested tolerance
+can be found by search. The test is stated in `ℕ` — `count · 2ᵏ ≤ 2ⁿ` — so no rational arithmetic
+happens inside a program; `thinAt_iff` converts once, at the boundary.
+
+The search returns a *level*, not a fuel bound. Nothing here needs `evaln`: the level is delivered
+by a total `NatFunctionCode`, exactly as a Schnorr modulus is. -/
+
+namespace ComputableTree
+
+variable (T : ComputableTree)
+
+def thinAt (k n : ℕ) : Bool := decide (survivorCount T n (2 ^ n) * 2 ^ k ≤ 2 ^ n)
+
+variable {T}
+
+theorem thinAt_iff {k n : ℕ} : T.thinAt k n = true ↔ T.levelWeight n ≤ (2⁻¹ : ℚ≥0) ^ k := by
+  have h2n : (0 : ℚ≥0) < (2 : ℚ≥0) ^ n := by positivity
+  have h2k : (0 : ℚ≥0) < (2 : ℚ≥0) ^ k := by positivity
+  rw [thinAt, decide_eq_true_iff, levelWeight, inv_pow, inv_pow, ← div_eq_mul_inv, ← one_div,
+    div_le_div_iff₀ h2n h2k, one_mul]
+  constructor
+  · intro h; exact_mod_cast h
+  · intro h; exact_mod_cast h
+
+variable (T)
+
+noncomputable def thinLevelSearch (k : ℕ) : Part ℕ := Nat.rfind fun n ↦ Part.some (T.thinAt k n)
+
+theorem partrec_thinLevelSearch : Nat.Partrec fun k ↦ T.thinLevelSearch k := by
+  have hcount : Computable fun w : ℕ × ℕ ↦ survivorCount T w.2 (2 ^ w.2) :=
+    T.computable_survivorCount.comp
+      (Computable.pair (Computable.snd)
+        ((Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) Primrec.snd).to_comp)
+  have hpow : Primrec fun m : ℕ ↦ 2 ^ m :=
+    (Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) Primrec.id
+  have hle : Computable fun p : ℕ × ℕ ↦ decide (p.1 ≤ p.2) :=
+    (primrecPred_iff_primrec_decide.mp Primrec.nat_le).to_comp
+  have hthin : Computable fun w : ℕ × ℕ ↦ T.thinAt w.1 w.2 :=
+    hle.comp (Computable.pair
+      (Primrec.nat_mul.to_comp.comp hcount (hpow.comp Primrec.fst).to_comp)
+      (hpow.comp Primrec.snd).to_comp)
+  exact Partrec.nat_iff.mp (Partrec.rfind (Computable₂.partrec₂ hthin.to₂))
+
+theorem thinLevelSearch_dom (hnull : fairCoin T.toCantorTree.paths = 0) (k : ℕ) :
+    (T.thinLevelSearch k).Dom := by
+  obtain ⟨n, hn⟩ := T.exists_levelWeight_le_of_null hnull k
+  obtain ⟨m, hm, -⟩ := Nat.rfind_min' (p := fun n ↦ T.thinAt k n) (thinAt_iff.mpr hn)
+  exact Part.dom_iff_mem.mpr ⟨m, hm⟩
+
+/-! ## The selected level
+
+The code and its value are kept apart: every semantic result below is stated against
+`selectedLevel`, so `NatFunctionCode` projections never appear inside a measure proof. -/
+
+noncomputable def smallLevelCode (hnull : fairCoin T.toCantorTree.paths = 0) : NatFunctionCode :=
+  NatFunctionCode.ofPartrecTotal (partrec_thinLevelSearch T) (thinLevelSearch_dom T hnull)
+
+noncomputable def selectedLevel (hnull : fairCoin T.toCantorTree.paths = 0) (k : ℕ) : ℕ :=
+  (T.smallLevelCode hnull).toFun k
+
+variable {T}
+
+theorem thinAt_selectedLevel {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+    T.thinAt k (T.selectedLevel hnull k) = true := by
+  have hmem : T.selectedLevel hnull k ∈ T.thinLevelSearch k := by
+    rw [selectedLevel, smallLevelCode, NatFunctionCode.ofPartrecTotal_toFun]
+    exact Part.get_mem _
+  simpa using Nat.rfind_spec hmem
+
+theorem selectedLevel_weight_le {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+    T.levelWeight (T.selectedLevel hnull k) ≤ (2⁻¹ : ℚ≥0) ^ k :=
+  thinAt_iff.mp (thinAt_selectedLevel k)
+
+variable (T)
+
+theorem computable_selectedLevel (hnull : fairCoin T.toCantorTree.paths = 0) :
+    Computable (T.selectedLevel hnull) := (T.smallLevelCode hnull).computable_toFun
+
+/-! ## The cover family as a coded open set
+
+The enumerator emits `σ` exactly when its input is the canonical encoding of `σ`, the length is
+the selected level, and `σ` is a node. No level front is ever built as a list. -/
+
+noncomputable def coverEnum (hnull : fairCoin T.toCantorTree.paths = 0) (input : ℕ) : Part ℕ :=
+  (Part.ofOption (canonicalBitString input.unpair.2)).bind fun σ ↦
+    Part.ofOption (if decide (σ.length = T.selectedLevel hnull input.unpair.1) && T.member σ
+      then some (Encodable.encode σ) else none)
+
+theorem partrec_coverEnum (hnull : fairCoin T.toCantorTree.paths = 0) :
+    Nat.Partrec (T.coverEnum hnull) := by
+  have hlen : Computable fun w : ℕ × BitString ↦
+      decide (w.2.length = T.selectedLevel hnull w.1.unpair.1) :=
+    (primrecPred_iff_primrec_decide.mp Primrec.eq).to_comp.comp
+      (Computable.pair (Primrec.list_length.comp Primrec.snd).to_comp
+        ((T.computable_selectedLevel hnull).comp
+          (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)).to_comp))
+  have hbody : Computable fun w : ℕ × BitString ↦
+      (if decide (w.2.length = T.selectedLevel hnull w.1.unpair.1) && T.member w.2
+        then some (Encodable.encode w.2) else none) := by
+    have hcond := Computable.cond (Primrec.and.to_comp.comp hlen
+      (T.computable_member.comp Computable.snd))
+      (Primrec.option_some.comp (Primrec.encode.comp Primrec.snd)).to_comp
+      (Computable.const (none : Option ℕ))
+    simpa only [Bool.cond_eq_ite] using hcond
+  have hcanon : Partrec fun input : ℕ ↦ Part.ofOption (canonicalBitString input.unpair.2) :=
+    Computable.ofOption (primrec_canonicalBitString.comp (Primrec.snd.comp Primrec.unpair)).to_comp
+  exact Partrec.nat_iff.mp (hcanon.bind (Computable.ofOption hbody).to₂)
+
+noncomputable def coverCode (hnull : fairCoin T.toCantorTree.paths = 0) : Nat.Partrec.Code :=
+  (Nat.Partrec.Code.exists_code.mp (T.partrec_coverEnum hnull)).choose
+
+theorem eval_coverCode (hnull : fairCoin T.toCantorTree.paths = 0) :
+    (T.coverCode hnull).eval = T.coverEnum hnull :=
+  (Nat.Partrec.Code.exists_code.mp (T.partrec_coverEnum hnull)).choose_spec
+
+/-- The coded uniformly enumerable family of clopen covers. -/
+noncomputable def nullCoverOpen (hnull : fairCoin T.toCantorTree.paths = 0) : UniformOpenCode :=
+  ⟨T.coverCode hnull⟩
+
+@[simp] theorem nullCoverOpen_program (hnull : fairCoin T.toCantorTree.paths = 0) :
+    (T.nullCoverOpen hnull).program = T.coverCode hnull := rfl
+
+variable {T}
+
+theorem enumeratesString_coverCode {hnull : fairCoin T.toCantorTree.paths = 0} {k : ℕ}
+    {σ : BitString} :
+    EnumeratesString (T.coverCode hnull) k σ ↔ σ ∈ T.levelFront (T.selectedLevel hnull k) := by
+  rw [mem_levelFront_iff]
+  constructor
+  · rintro ⟨j, m, hm, hdec⟩
+    rw [eval_coverCode, coverEnum, Nat.unpair_pair, Part.mem_bind_iff] at hm
+    obtain ⟨ρ, hρ, hm'⟩ := hm
+    rw [Part.mem_ofOption] at hρ hm'
+    by_cases hc : (decide (ρ.length = T.selectedLevel hnull k) && T.member ρ) = true
+    · rw [if_pos hc, Option.mem_def, Option.some_inj] at hm'
+      subst hm'
+      rw [Encodable.encodek, Option.some_inj] at hdec
+      subst hdec
+      rw [Bool.and_eq_true, decide_eq_true_iff, ComputableTree.member_eq_true_iff] at hc
+      exact hc
+    · rw [if_neg hc] at hm'
+      exact absurd hm' (by simp)
+  · rintro ⟨hlen, hmem⟩
+    refine ⟨Encodable.encode σ, Encodable.encode σ, ?_, Encodable.encodek σ⟩
+    rw [eval_coverCode, coverEnum, Nat.unpair_pair, Part.mem_bind_iff]
+    refine ⟨σ, by rw [Part.mem_ofOption, canonicalBitString_encode]; rfl, ?_⟩
+    rw [Part.mem_ofOption, if_pos (by
+      rw [Bool.and_eq_true, decide_eq_true_iff, ComputableTree.member_eq_true_iff]
+      exact ⟨hlen, hmem⟩)]
+    rfl
+
+/-- **The denotation is the selected level cover.** -/
+theorem denote_nullCoverOpen {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+    (T.nullCoverOpen hnull).denote k = T.levelCover (T.selectedLevel hnull k) := by
+  ext x
+  rw [UniformOpenCode.mem_denote_iff_enumerates, levelCover, mem_cylinderUnion]
+  simp only [nullCoverOpen_program, enumeratesString_coverCode, List.mem_toFinset]
+
+theorem measure_nullCoverOpen_le {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+    fairCoin ((T.nullCoverOpen hnull).denote k) ≤ (2⁻¹ : ℝ≥0∞) ^ k := by
+  rw [denote_nullCoverOpen, fairCoin_levelCover, ← coe_pow_inv_two, coe_le_coe_nnrat]
+  exact selectedLevel_weight_le k
+
+/-- **Every path is covered**, at every level. -/
+theorem paths_subset_nullCoverOpen {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+    T.toCantorTree.paths ⊆ (T.nullCoverOpen hnull).denote k := by
+  rw [denote_nullCoverOpen, paths_eq_iInter_levelCover]
+  exact Set.iInter_subset _ _
 
 end ComputableTree
 
