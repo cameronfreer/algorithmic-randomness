@@ -682,7 +682,7 @@ noncomputable def nullSchnorrTest (T : ComputableTree)
     (T.nullSchnorrTest hnull).openCode = T.nullCoverOpen hnull := rfl
 
 /-- Every path of the tree is captured by the test. -/
-theorem captures_nullSchnorrTest {hnull : fairCoin T.toCantorTree.paths = 0} {x : Cantor}
+theorem captures_nullSchnorrTest (hnull : fairCoin T.toCantorTree.paths = 0) {x : Cantor}
     (hx : x ∈ T.toCantorTree.paths) : (T.nullSchnorrTest hnull).Captures x :=
   fun n ↦ paths_subset_nullCoverOpen n hx
 

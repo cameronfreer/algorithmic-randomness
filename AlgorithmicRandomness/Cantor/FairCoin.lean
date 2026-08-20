@@ -6,6 +6,7 @@ Authors: Cameron Freer
 import AlgorithmicRandomness.Cantor.Basic
 import Mathlib.Probability.Distributions.Uniform
 import Mathlib.Probability.ProductMeasure
+import Mathlib.Analysis.SpecificLimits.Basic
 
 /-!
 # Fair-coin measure on Cantor space
@@ -47,5 +48,14 @@ theorem fairCoin_cylinder (σ : BitString) : fairCoin (cylinder σ) = 2⁻¹ ^ �
 theorem fairCoin_cylinder_pos (σ : BitString) : 0 < fairCoin (cylinder σ) := by
   rw [fairCoin_cylinder]
   exact ENNReal.pow_pos (ENNReal.inv_pos.mpr (by simp)) _
+
+/-- **Every point is null**: it lies in cylinders of arbitrarily small measure. -/
+@[simp]
+theorem fairCoin_singleton (x : Cantor) : fairCoin {x} = 0 := by
+  refine le_antisymm (ge_of_tendsto'
+    (ENNReal.tendsto_pow_atTop_nhds_zero_of_lt_one (r := (2 : ENNReal)⁻¹) (by norm_num))
+    fun n ↦ ?_) zero_le
+  refine le_trans (measure_mono (Set.singleton_subset_iff.mpr (mem_cylinder_initSeg x n))) ?_
+  rw [fairCoin_cylinder, length_initSeg]
 
 end AlgorithmicRandomness

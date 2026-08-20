@@ -57,6 +57,15 @@ theorem length_prefixOf (n : ℕ) : (p.prefixOf n).length = n := length_initSeg 
 theorem mem_cylinder_prefixOf (n : ℕ) : p.point ∈ cylinder (p.prefixOf n) :=
   mem_cylinder_initSeg p.point n
 
+/-- A bundled point has computable bits; consumers should not have to reconstruct this from the
+program. -/
+theorem computable_point : Computable p.point := by
+  have h : Partrec fun n : ℕ ↦ p.bitCode.eval n :=
+    Code.eval_part.comp (Computable.const p.bitCode) Computable.id
+  have hb : Computable fun n : ℕ ↦ Encodable.encode (p.point n) :=
+    h.of_eq fun n ↦ p.eval_bitCode n
+  exact Computable.encode_iff.mp hb
+
 end ComputableCantorPoint
 
 /-! ## Fuel-bounded prefix assembly -/
