@@ -172,4 +172,9 @@ theorem ComputableCantorPoint.not_isKurtzRandom (p : ComputableCantorPoint) :
   not_isKurtzRandom_of_mem_paths p.fairCoin_paths_prefixTree
     (by rw [p.paths_prefixTree]; exact Set.mem_singleton _)
 
+/-- The remaining notion, now that the hierarchy reaches the bottom: computable randomness is
+above Kurtz randomness, so failing the weakest notion fails this one too. -/
+theorem ComputableCantorPoint.not_isComputablyRandom (p : ComputableCantorPoint) :
+    ¬IsComputablyRandom p.point := fun h ↦ p.not_isKurtzRandom h.isKurtzRandom
+
 end AlgorithmicRandomness

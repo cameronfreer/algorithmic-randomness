@@ -29,9 +29,10 @@ Established implications among randomness notions:
 | computably random | Kurtz random | by composition |
 | Martin-Löf random | Kurtz random | by composition |
 
-No computable point is Martin-Löf, Schnorr, or Kurtz random. Each of these has its own witness:
-for Kurtz randomness it is the prefix tree of the point, since the weakest notion cannot inherit
-the argument from the stronger ones.
+No computable point is random in any of these senses. Martin-Löf, Schnorr, and Kurtz randomness
+each have their own witness — for Kurtz randomness the prefix tree of the point, since the weakest
+notion cannot inherit the argument from the stronger ones — and computable randomness then follows
+from the Kurtz case through the hierarchy.
 
 ## Characterizations and analytic witnesses
 
