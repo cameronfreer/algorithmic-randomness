@@ -25,6 +25,13 @@ Established implications among randomness notions:
 | Martin-Löf random | computably random | Ville's inequality on a coded threshold test |
 | computably random | Schnorr random | simulation of the conditional-probability martingale |
 | Martin-Löf random | Schnorr random | structural, and also by composition |
+| Schnorr random | Kurtz random | the Schnorr test a null computable tree already carries |
+| computably random | Kurtz random | by composition |
+| Martin-Löf random | Kurtz random | by composition |
+
+No computable point is Martin-Löf, Schnorr, or Kurtz random. Each of these has its own witness:
+for Kurtz randomness it is the prefix tree of the point, since the weakest notion cannot inherit
+the argument from the stronger ones.
 
 ## Characterizations and analytic witnesses
 
@@ -102,6 +109,8 @@ layer is exercised rather than merely typechecked.
 - Binary expansions of reals, with `realOf` surjective onto the unit interval.
 - Prefix-free machines as coded objects, an optimal universal machine built as one actual program,
   prefix complexity with primitive recursive finite approximations, and Kraft–Chaitin allocation.
+- Computable trees and effectively closed classes, with a null path class converted into a Schnorr
+  test by searching for thin levels, giving Kurtz randomness at the bottom of the hierarchy.
 
 ## Architecture
 
@@ -127,10 +136,11 @@ The source is organized by mathematical layer:
 | `Cantor/` | Cantor space, cylinders, fair-coin measure, finite open sets |
 | `Coding/` | Program codes and executable numeric and finite-open representations |
 | `EffectiveOpen/` | Coded c.e. open families, reindexing, and trimming |
-| `Randomness/` | Martin-Löf and Schnorr tests, and randomness implications |
+| `Randomness/` | Martin-Löf, Schnorr, and Kurtz randomness, and the implications among them |
 | `Martingale/` | Tree martingales, Ville's inequality, computable and savings martingales |
 | `Analysis/` | Dyadic intervals, cumulative functions, computable Lipschitz functions |
 | `Complexity/` | Prefix-free machines, the universal machine, Kraft–Chaitin allocation |
+| `EffectiveClosed/` | Computable trees, level fronts, and the tests their null path classes carry |
 
 ## Using the library
 

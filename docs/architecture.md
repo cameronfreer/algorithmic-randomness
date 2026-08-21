@@ -207,6 +207,58 @@ can legitimately arise at different stages.
 See [prefix-free-machines.md](prefix-free-machines.md) for the representation and the three
 constructions built on it.
 
+## A closed class is a Boolean membership test plus an actual program
+
+A `ComputableTree` carries three layers, not one: a semantic set of nodes, a Boolean decision
+function on strings, and a `NatFunctionCode` computing that function. The Boolean layer is what
+keeps arbitrary program outputs out of the mathematical definition. Relating the program directly
+to `σ ∈ nodes` would put a classical decision procedure inside the correctness statement and leave
+the executable layer nothing to run.
+
+Prefix closure is deliberately weak in what it is used for. It is *not* needed for the path set to
+be closed, nor for the identity between the path set and the intersection of the level covers —
+both of those follow from the family of nodes alone. It is needed only for the level covers to be
+*antitone*. Nor is the root required to be a node: with no nodes at all the path set is empty,
+which is the closed class one wants the empty tree to denote.
+
+## A null path class converts itself into a Schnorr test
+
+An effectively closed class of measure zero yields a test, and the test is built from the tree's
+own level covers rather than from any external enumeration. If the level weights did not tend to
+zero the class would not be null, so for each `k` a level thin enough to have weight at most `2⁻ᵏ`
+exists; the search for one is unbounded but terminates, and extracts as a total code. The cover at
+that level is then enumerated by emitting a string exactly when the input is its canonical
+encoding, its length is the selected level, and it is a node — so no level front is ever built as
+a list.
+
+Two searches occur here and they are different in kind, which is why they are separated into
+different codes. The first *selects a thin level*: it is a genuine unbounded search whose
+termination is a measure-theoretic fact, and whose answer is mathematically meaningful. The second
+*locates an exact enumeration stage*: each level is a finite union, so its enumeration finishes,
+and past that stage the staged set is not merely close to the level but equal to it. The Schnorr
+modulus therefore ignores its own precision argument, and the tail is empty rather than small.
+That is the shared shape `SchnorrTest.ofExactStages` names.
+
+The completion test is worth one remark. It compares two natural numbers — the number of distinct
+strings enumerated so far against the survivor count at the selected level — and never rebuilds
+the level front. The comparison is sound because prefix-minimality is vacuous within a single
+length, so the minimal-nodup list of a one-length family is exactly its distinct-string count.
+
+## Why the tree construction is pointwise, not uniform in a tree code
+
+Everything in this branch takes a *fixed* `ComputableTree` and produces codes for it; nothing takes
+a tree code as input and transforms it. This development requires uniform code transformation when
+downstream executable code must receive and run another program — trimming, the universal
+Martin-Löf test, and the tagged universal prefix-free machine are the cases. No such consumer
+occurs here: nothing enumerates trees or receives a tree code dynamically, and the null-tree
+Schnorr test is consumed only by the Kurtz implication, which quantifies over trees in the
+metatheory rather than in a program. A pointwise proved-computable construction is therefore
+sufficient, as it was for the computable martingale's Lipschitz cumulative function.
+
+The same reasoning explains what is *not* bundled. Nullity is a hypothesis of the construction,
+consumed at one definition, so it stays a proposition rather than becoming a field of a
+`NullComputableTree` structure.
+
 ## Verification discipline
 
 These are enforced policies rather than periodic observations. CI builds the public spine with
