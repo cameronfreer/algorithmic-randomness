@@ -119,7 +119,7 @@ noncomputable def prefixTree : ComputableTree where
 /-- The path set is exactly the point: a sequence all of whose initial segments the point extends
 agrees with the point everywhere. -/
 theorem mem_paths_prefixTree_iff {x : Cantor} :
-    x ∈ p.prefixTree.toCantorTree.paths ↔ x = p.point := by
+    x ∈ p.prefixTree.paths ↔ x = p.point := by
   constructor
   · intro hx
     funext i
@@ -131,11 +131,11 @@ theorem mem_paths_prefixTree_iff {x : Cantor} :
   · rintro rfl
     exact fun n ↦ mem_cylinder_initSeg p.point n
 
-theorem paths_prefixTree : p.prefixTree.toCantorTree.paths = {p.point} := by
+theorem paths_prefixTree : p.prefixTree.paths = {p.point} := by
   ext x
   rw [mem_paths_prefixTree_iff, Set.mem_singleton_iff]
 
-theorem fairCoin_paths_prefixTree : fairCoin p.prefixTree.toCantorTree.paths = 0 := by
+theorem fairCoin_paths_prefixTree : fairCoin p.prefixTree.paths = 0 := by
   rw [paths_prefixTree, fairCoin_singleton]
 
 end ComputableCantorPoint
@@ -144,7 +144,11 @@ end ComputableCantorPoint
 
 /-- A point is Kurtz random when it avoids every null effectively closed class. -/
 def IsKurtzRandom (x : Cantor) : Prop :=
-  ∀ T : ComputableTree, fairCoin T.toCantorTree.paths = 0 → x ∉ T.toCantorTree.paths
+  ∀ T : ComputableTree, fairCoin T.paths = 0 → x ∉ T.paths
+
+theorem not_isKurtzRandom_of_mem_paths {T : ComputableTree} {x : Cantor}
+    (hnull : fairCoin T.paths = 0) (hx : x ∈ T.paths) : ¬IsKurtzRandom x :=
+  fun h ↦ h T hnull hx
 
 /-- **Schnorr randomness implies Kurtz randomness.** The Schnorr test is the one the null tree
 already carries; nothing is constructed here. -/
@@ -164,8 +168,8 @@ theorem IsMartinLofRandom.isKurtzRandom {x : Cantor} (hx : IsMartinLofRandom x) 
 /-- The sanity check at the bottom of the hierarchy. Since Kurtz randomness is the weakest notion,
 this does not follow from the corresponding facts above it and needs its own witness. -/
 theorem ComputableCantorPoint.not_isKurtzRandom (p : ComputableCantorPoint) :
-    ¬IsKurtzRandom p.point := fun h ↦
-  h p.prefixTree p.fairCoin_paths_prefixTree
+    ¬IsKurtzRandom p.point :=
+  not_isKurtzRandom_of_mem_paths p.fairCoin_paths_prefixTree
     (by rw [p.paths_prefixTree]; exact Set.mem_singleton _)
 
 end AlgorithmicRandomness

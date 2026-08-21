@@ -144,6 +144,10 @@ allowing a semantic rewrite at the boundary. -/
 @[simp] theorem member_eq_false_iff (σ : BitString) : T.member σ = false ↔ σ ∉ T.nodes := by
   rw [← member_eq_true_iff T σ, Bool.eq_false_iff, ne_eq]
 
+/-- The path set of the underlying tree. The alias keeps the parent projection out of public
+statements; it is reducible, so results stated either way interoperate. -/
+abbrev paths : Set Cantor := T.toCantorTree.paths
+
 theorem computable_member : Computable T.member := by
   have h : Computable fun σ : BitString ↦ Encodable.encode (T.member σ) :=
     T.program.computable_toFun.comp Primrec.encode.to_comp |>.of_eq fun σ ↦ T.eval_member σ
@@ -202,7 +206,7 @@ theorem isClopen_levelCover (T : ComputableTree) (n : ℕ) : IsClopen (T.levelCo
 /-- **The intersection characterization.** At a fixed level, lying in a cylinder of that length
 identifies the string as the initial segment, so neither inclusion needs prefix closure. -/
 theorem paths_eq_iInter_levelCover (T : ComputableTree) :
-    T.toCantorTree.paths = ⋂ n, T.levelCover n := by
+    T.paths = ⋂ n, T.levelCover n := by
   ext x
   simp only [CantorTree.mem_paths_iff, Set.mem_iInter, levelCover, mem_cylinderUnion,
     List.mem_toFinset]
@@ -323,7 +327,7 @@ Continuity from above for the antitone covers. This is the only semantic input t
 next layer needs; the search itself is then purely executable. -/
 
 theorem exists_levelWeight_le_of_null (T : ComputableTree)
-    (hnull : fairCoin T.toCantorTree.paths = 0) (k : ℕ) :
+    (hnull : fairCoin T.paths = 0) (k : ℕ) :
     ∃ n, T.levelWeight n ≤ (2⁻¹ : ℚ≥0) ^ k := by
   have htend : Filter.Tendsto (fairCoin ∘ T.levelCover) Filter.atTop (nhds 0) := by
     have h := MeasureTheory.tendsto_measure_iInter_atTop (μ := fairCoin)
@@ -385,7 +389,7 @@ theorem partrec_thinLevelSearch : Nat.Partrec fun k ↦ T.thinLevelSearch k := b
       (hpow.comp Primrec.snd).to_comp)
   exact Partrec.nat_iff.mp (Partrec.rfind (Computable₂.partrec₂ hthin.to₂))
 
-theorem thinLevelSearch_dom (hnull : fairCoin T.toCantorTree.paths = 0) (k : ℕ) :
+theorem thinLevelSearch_dom (hnull : fairCoin T.paths = 0) (k : ℕ) :
     (T.thinLevelSearch k).Dom := by
   obtain ⟨n, hn⟩ := T.exists_levelWeight_le_of_null hnull k
   obtain ⟨m, hm, -⟩ := Nat.rfind_min' (p := fun n ↦ T.thinAt k n) (thinAt_iff.mpr hn)
@@ -396,28 +400,28 @@ theorem thinLevelSearch_dom (hnull : fairCoin T.toCantorTree.paths = 0) (k : ℕ
 The code and its value are kept apart: every semantic result below is stated against
 `selectedLevel`, so `NatFunctionCode` projections never appear inside a measure proof. -/
 
-noncomputable def smallLevelCode (hnull : fairCoin T.toCantorTree.paths = 0) : NatFunctionCode :=
+noncomputable def smallLevelCode (hnull : fairCoin T.paths = 0) : NatFunctionCode :=
   NatFunctionCode.ofPartrecTotal (partrec_thinLevelSearch T) (thinLevelSearch_dom T hnull)
 
-noncomputable def selectedLevel (hnull : fairCoin T.toCantorTree.paths = 0) (k : ℕ) : ℕ :=
+noncomputable def selectedLevel (hnull : fairCoin T.paths = 0) (k : ℕ) : ℕ :=
   (T.smallLevelCode hnull).toFun k
 
 variable {T}
 
-theorem thinAt_selectedLevel {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+theorem thinAt_selectedLevel {hnull : fairCoin T.paths = 0} (k : ℕ) :
     T.thinAt k (T.selectedLevel hnull k) = true := by
   have hmem : T.selectedLevel hnull k ∈ T.thinLevelSearch k := by
     rw [selectedLevel, smallLevelCode, NatFunctionCode.ofPartrecTotal_toFun]
     exact Part.get_mem _
   simpa using Nat.rfind_spec hmem
 
-theorem selectedLevel_weight_le {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+theorem selectedLevel_weight_le {hnull : fairCoin T.paths = 0} (k : ℕ) :
     T.levelWeight (T.selectedLevel hnull k) ≤ (2⁻¹ : ℚ≥0) ^ k :=
   thinAt_iff.mp (thinAt_selectedLevel k)
 
 variable (T)
 
-theorem computable_selectedLevel (hnull : fairCoin T.toCantorTree.paths = 0) :
+theorem computable_selectedLevel (hnull : fairCoin T.paths = 0) :
     Computable (T.selectedLevel hnull) := (T.smallLevelCode hnull).computable_toFun
 
 /-! ## The cover family as a coded open set
@@ -425,12 +429,12 @@ theorem computable_selectedLevel (hnull : fairCoin T.toCantorTree.paths = 0) :
 The enumerator emits `σ` exactly when its input is the canonical encoding of `σ`, the length is
 the selected level, and `σ` is a node. No level front is ever built as a list. -/
 
-noncomputable def coverEnum (hnull : fairCoin T.toCantorTree.paths = 0) (input : ℕ) : Part ℕ :=
+noncomputable def coverEnum (hnull : fairCoin T.paths = 0) (input : ℕ) : Part ℕ :=
   (Part.ofOption (canonicalBitString input.unpair.2)).bind fun σ ↦
     Part.ofOption (if decide (σ.length = T.selectedLevel hnull input.unpair.1) && T.member σ
       then some (Encodable.encode σ) else none)
 
-theorem partrec_coverEnum (hnull : fairCoin T.toCantorTree.paths = 0) :
+theorem partrec_coverEnum (hnull : fairCoin T.paths = 0) :
     Nat.Partrec (T.coverEnum hnull) := by
   have hlen : Computable fun w : ℕ × BitString ↦
       decide (w.2.length = T.selectedLevel hnull w.1.unpair.1) :=
@@ -450,23 +454,23 @@ theorem partrec_coverEnum (hnull : fairCoin T.toCantorTree.paths = 0) :
     Computable.ofOption (primrec_canonicalBitString.comp (Primrec.snd.comp Primrec.unpair)).to_comp
   exact Partrec.nat_iff.mp (hcanon.bind (Computable.ofOption hbody).to₂)
 
-noncomputable def coverCode (hnull : fairCoin T.toCantorTree.paths = 0) : Nat.Partrec.Code :=
+noncomputable def coverCode (hnull : fairCoin T.paths = 0) : Nat.Partrec.Code :=
   (Nat.Partrec.Code.exists_code.mp (T.partrec_coverEnum hnull)).choose
 
-theorem eval_coverCode (hnull : fairCoin T.toCantorTree.paths = 0) :
+theorem eval_coverCode (hnull : fairCoin T.paths = 0) :
     (T.coverCode hnull).eval = T.coverEnum hnull :=
   (Nat.Partrec.Code.exists_code.mp (T.partrec_coverEnum hnull)).choose_spec
 
 /-- The coded uniformly enumerable family of clopen covers. -/
-noncomputable def nullCoverOpen (hnull : fairCoin T.toCantorTree.paths = 0) : UniformOpenCode :=
+noncomputable def nullCoverOpen (hnull : fairCoin T.paths = 0) : UniformOpenCode :=
   ⟨T.coverCode hnull⟩
 
-@[simp] theorem nullCoverOpen_program (hnull : fairCoin T.toCantorTree.paths = 0) :
+@[simp] theorem nullCoverOpen_program (hnull : fairCoin T.paths = 0) :
     (T.nullCoverOpen hnull).program = T.coverCode hnull := rfl
 
 variable {T}
 
-theorem enumeratesString_coverCode {hnull : fairCoin T.toCantorTree.paths = 0} {k : ℕ}
+theorem enumeratesString_coverCode {hnull : fairCoin T.paths = 0} {k : ℕ}
     {σ : BitString} :
     EnumeratesString (T.coverCode hnull) k σ ↔ σ ∈ T.levelFront (T.selectedLevel hnull k) := by
   rw [mem_levelFront_iff]
@@ -494,20 +498,20 @@ theorem enumeratesString_coverCode {hnull : fairCoin T.toCantorTree.paths = 0} {
     rfl
 
 /-- **The denotation is the selected level cover.** -/
-theorem denote_nullCoverOpen {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+theorem denote_nullCoverOpen {hnull : fairCoin T.paths = 0} (k : ℕ) :
     (T.nullCoverOpen hnull).denote k = T.levelCover (T.selectedLevel hnull k) := by
   ext x
   rw [UniformOpenCode.mem_denote_iff_enumerates, levelCover, mem_cylinderUnion]
   simp only [nullCoverOpen_program, enumeratesString_coverCode, List.mem_toFinset]
 
-theorem measure_nullCoverOpen_le {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
+theorem measure_nullCoverOpen_le {hnull : fairCoin T.paths = 0} (k : ℕ) :
     fairCoin ((T.nullCoverOpen hnull).denote k) ≤ (2⁻¹ : ℝ≥0∞) ^ k := by
   rw [denote_nullCoverOpen, fairCoin_levelCover, ← coe_pow_inv_two, coe_le_coe_nnrat]
   exact selectedLevel_weight_le k
 
 /-- **Every path is covered**, at every level. -/
-theorem paths_subset_nullCoverOpen {hnull : fairCoin T.toCantorTree.paths = 0} (k : ℕ) :
-    T.toCantorTree.paths ⊆ (T.nullCoverOpen hnull).denote k := by
+theorem paths_subset_nullCoverOpen {hnull : fairCoin T.paths = 0} (k : ℕ) :
+    T.paths ⊆ (T.nullCoverOpen hnull).denote k := by
   rw [denote_nullCoverOpen, paths_eq_iInter_levelCover]
   exact Set.iInter_subset _ _
 
@@ -547,26 +551,26 @@ variable (T)
 
 /-- The completion test at stage `s`: as many distinct strings enumerated as there are survivors
 at the selected level. -/
-noncomputable def completeAt (hnull : fairCoin T.toCantorTree.paths = 0) (n s : ℕ) : Bool :=
+noncomputable def completeAt (hnull : fairCoin T.paths = 0) (n s : ℕ) : Bool :=
   decide ((minimalNodup (stringStageList (T.coverCode hnull) n s)).length
     = survivorCount T (T.selectedLevel hnull n) (2 ^ T.selectedLevel hnull n))
 
 variable {T}
 
-theorem length_of_mem_stringStageList_nullCover {hnull : fairCoin T.toCantorTree.paths = 0}
+theorem length_of_mem_stringStageList_nullCover {hnull : fairCoin T.paths = 0}
     {n s : ℕ} {σ : BitString} (h : σ ∈ stringStageList (T.coverCode hnull) n s) :
     σ.length = T.selectedLevel hnull n := by
   have hmem : σ ∈ stringStage (T.coverCode hnull) n s := by
     rw [← stringStageList_toFinset]; exact List.mem_toFinset.mpr h
   exact length_of_mem_levelFront (enumeratesString_coverCode.mp (stringStage_sound hmem))
 
-theorem stage_nullCoverOpen_subset {hnull : fairCoin T.toCantorTree.paths = 0} (n s : ℕ) :
+theorem stage_nullCoverOpen_subset {hnull : fairCoin T.paths = 0} (n s : ℕ) :
     (T.nullCoverOpen hnull).stage n s ⊆ (T.levelFront (T.selectedLevel hnull n)).toFinset := by
   intro σ hσ
   exact List.mem_toFinset.mpr (enumeratesString_coverCode.mp (stringStage_sound hσ))
 
 /-- **The completion seam.** The test fires exactly when the stage already is the whole level. -/
-theorem completeAt_iff {hnull : fairCoin T.toCantorTree.paths = 0} {n s : ℕ} :
+theorem completeAt_iff {hnull : fairCoin T.paths = 0} {n s : ℕ} :
     T.completeAt hnull n s = true ↔
       (T.nullCoverOpen hnull).stage n s = (T.levelFront (T.selectedLevel hnull n)).toFinset := by
   have hbridge : (minimalNodup (stringStageList (T.coverCode hnull) n s)).length
@@ -583,7 +587,7 @@ theorem completeAt_iff {hnull : fairCoin T.toCantorTree.paths = 0} {n s : ℕ} :
 variable (T)
 
 /-- The search for a stage at which the level is fully enumerated. -/
-noncomputable def completeStageSearch (hnull : fairCoin T.toCantorTree.paths = 0) (n : ℕ) :
+noncomputable def completeStageSearch (hnull : fairCoin T.paths = 0) (n : ℕ) :
     Part ℕ :=
   Nat.rfind fun s ↦ Part.some (T.completeAt hnull n s)
 
@@ -591,7 +595,7 @@ noncomputable def completeStageSearch (hnull : fairCoin T.toCantorTree.paths = 0
 -- proof below from unfolding them.
 attribute [local irreducible] ComputableTree.coverCode ComputableTree.selectedLevel
 
-theorem partrec_completeStageSearch (hnull : fairCoin T.toCantorTree.paths = 0) :
+theorem partrec_completeStageSearch (hnull : fairCoin T.paths = 0) :
     Nat.Partrec fun m ↦ T.completeStageSearch hnull m.unpair.1 := by
   have hsel : Computable fun w : ℕ × ℕ ↦ T.selectedLevel hnull w.1.unpair.1 :=
     (T.computable_selectedLevel hnull).comp
@@ -620,7 +624,7 @@ theorem partrec_completeStageSearch (hnull : fairCoin T.toCantorTree.paths = 0) 
     (heq.comp hpair).of_eq fun _ ↦ rfl
   exact Partrec.nat_iff.mp (Partrec.rfind (Computable₂.partrec₂ hcomplete.to₂))
 
-theorem completeStageSearch_dom (hnull : fairCoin T.toCantorTree.paths = 0) (n : ℕ) :
+theorem completeStageSearch_dom (hnull : fairCoin T.paths = 0) (n : ℕ) :
     (T.completeStageSearch hnull n).Dom := by
   obtain ⟨s, hs⟩ := exists_stage_of_forall_enumerates (c := T.coverCode hnull) (n := n)
     (T.levelFront (T.selectedLevel hnull n)) fun _ hσ ↦ enumeratesString_coverCode.mpr hσ
@@ -632,18 +636,18 @@ theorem completeStageSearch_dom (hnull : fairCoin T.toCantorTree.paths = 0) (n :
 
 /-- The modulus code: on `Nat.pair n k` it returns a stage at which level `n` is complete, so the
 value does not depend on `k`. -/
-noncomputable def completeStageCode (hnull : fairCoin T.toCantorTree.paths = 0) :
+noncomputable def completeStageCode (hnull : fairCoin T.paths = 0) :
     NatFunctionCode :=
   NatFunctionCode.ofPartrecTotal (T.partrec_completeStageSearch hnull)
     fun m ↦ T.completeStageSearch_dom hnull m.unpair.1
 
 /-- The stage itself. Every semantic result below is stated against this, not against the code. -/
-noncomputable def completeStage (hnull : fairCoin T.toCantorTree.paths = 0) (n : ℕ) : ℕ :=
+noncomputable def completeStage (hnull : fairCoin T.paths = 0) (n : ℕ) : ℕ :=
   (T.completeStageSearch hnull n).get (T.completeStageSearch_dom hnull n)
 
 variable {T}
 
-theorem apply₂_completeStageCode {hnull : fairCoin T.toCantorTree.paths = 0} (n k : ℕ) :
+theorem apply₂_completeStageCode {hnull : fairCoin T.paths = 0} (n k : ℕ) :
     (T.completeStageCode hnull).apply₂ n k = T.completeStage hnull n := by
   have hmem : ∀ m : ℕ, (T.completeStageCode hnull).toFun m
       ∈ T.completeStageSearch hnull m.unpair.1 := fun m ↦ by
@@ -653,13 +657,13 @@ theorem apply₂_completeStageCode {hnull : fairCoin T.toCantorTree.paths = 0} (
   simp only [Nat.unpair_pair] at h
   exact Part.mem_unique h (Part.get_mem _)
 
-theorem completeAt_completeStage {hnull : fairCoin T.toCantorTree.paths = 0} (n : ℕ) :
+theorem completeAt_completeStage {hnull : fairCoin T.paths = 0} (n : ℕ) :
     T.completeAt hnull n (T.completeStage hnull n) = true := by
   simpa [completeStage] using Nat.rfind_spec (Part.get_mem (T.completeStageSearch_dom hnull n))
 
 /-- **The stage is exact**, not merely close: at the completion stage the staged set is the whole
 level of the cover. -/
-theorem stageSet_completeStage {hnull : fairCoin T.toCantorTree.paths = 0} (n : ℕ) :
+theorem stageSet_completeStage {hnull : fairCoin T.paths = 0} (n : ℕ) :
     (T.nullCoverOpen hnull).stageSet n (T.completeStage hnull n)
       = (T.nullCoverOpen hnull).denote n := by
   rw [UniformOpenCode.stageSet, completeAt_iff.mp (completeAt_completeStage n),
@@ -670,20 +674,17 @@ theorem stageSet_completeStage {hnull : fairCoin T.toCantorTree.paths = 0} (n : 
 /-- **Gate 3b.** A computable tree with null path class carries a Schnorr test whose levels are
 its own level covers. -/
 noncomputable def nullSchnorrTest (T : ComputableTree)
-    (hnull : fairCoin T.toCantorTree.paths = 0) : SchnorrTest where
-  openCode := T.nullCoverOpen hnull
-  measure_le := measure_nullCoverOpen_le
-  modulus := T.completeStageCode hnull
-  tail_le n k := by
-    rw [apply₂_completeStageCode, stageSet_completeStage, Set.sdiff_self, measure_empty]
-    exact zero_le
+    (hnull : fairCoin T.paths = 0) : SchnorrTest :=
+  SchnorrTest.ofExactStages (T.nullCoverOpen hnull) measure_nullCoverOpen_le
+    (T.completeStageCode hnull) fun n k ↦ by
+      rw [apply₂_completeStageCode, stageSet_completeStage]
 
-@[simp] theorem nullSchnorrTest_openCode {hnull : fairCoin T.toCantorTree.paths = 0} :
+@[simp] theorem nullSchnorrTest_openCode {hnull : fairCoin T.paths = 0} :
     (T.nullSchnorrTest hnull).openCode = T.nullCoverOpen hnull := rfl
 
 /-- Every path of the tree is captured by the test. -/
-theorem captures_nullSchnorrTest (hnull : fairCoin T.toCantorTree.paths = 0) {x : Cantor}
-    (hx : x ∈ T.toCantorTree.paths) : (T.nullSchnorrTest hnull).Captures x :=
+theorem captures_nullSchnorrTest (hnull : fairCoin T.paths = 0) {x : Cantor}
+    (hx : x ∈ T.paths) : (T.nullSchnorrTest hnull).Captures x :=
   fun n ↦ paths_subset_nullCoverOpen n hx
 
 end ComputableTree

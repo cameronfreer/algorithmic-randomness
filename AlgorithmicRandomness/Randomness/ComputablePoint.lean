@@ -288,19 +288,11 @@ theorem stageSet_modulus_eq (n k : ℕ) :
   refine fun x hx ↦ UniformOpenCode.mem_stageSet.mpr ⟨p.prefixOf n, ?_, hx⟩
   exact mem_stringStage.mpr ⟨0, Nat.zero_le _, p.stringOut_modulus n k⟩
 
-/-- Because the open sets are exactly attained, the tail is literally empty. -/
-theorem tail_empty (n k : ℕ) :
-    p.prefixOpen.denote n \ p.prefixOpen.stageSet n (p.modulusCode.apply₂ n k) = ∅ := by
-  rw [p.stageSet_modulus_eq n k, Set.sdiff_self]
-
-/-- The Schnorr test capturing `p`. -/
-noncomputable def schnorrTest : SchnorrTest where
-  toMartinLofTest := ⟨p.prefixOpen, fun n ↦ le_of_eq (p.fairCoin_denote_prefixOpen n)⟩
-  modulus := p.modulusCode
-  tail_le n k := by
-    show fairCoin (p.prefixOpen.denote n \ p.prefixOpen.stageSet n _) ≤ _
-    rw [p.tail_empty n k]
-    simp
+/-- The Schnorr test capturing `p`. The stages are exactly attained, so the tail bound is the
+generic one. -/
+noncomputable def schnorrTest : SchnorrTest :=
+  SchnorrTest.ofExactStages p.prefixOpen (fun n ↦ le_of_eq (p.fairCoin_denote_prefixOpen n))
+    p.modulusCode p.stageSet_modulus_eq
 
 @[simp]
 theorem schnorrTest_openCode : p.schnorrTest.openCode = p.prefixOpen := rfl

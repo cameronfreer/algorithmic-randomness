@@ -42,6 +42,26 @@ structure SchnorrTest extends MartinLofTest where
   tail_le : ∀ n k, fairCoin (openCode.denote n \ openCode.stageSet n (modulus.apply₂ n k))
     ≤ (2⁻¹ : ℝ≥0∞) ^ k
 
+/-- **Exact stages give a Schnorr test.** When the modulus names a stage at which the level is
+already attained — not merely approximated — the tail is empty and the modulus bound is generic.
+Both the prefix test of a computable point and the cover test of a null computable tree are of
+this form. -/
+def SchnorrTest.ofExactStages (openCode : UniformOpenCode)
+    (measure_le : ∀ n, fairCoin (openCode.denote n) ≤ (2⁻¹ : ℝ≥0∞) ^ n)
+    (modulus : NatFunctionCode)
+    (stage_eq : ∀ n k, openCode.stageSet n (modulus.apply₂ n k) = openCode.denote n) :
+    SchnorrTest where
+  toMartinLofTest := ⟨openCode, measure_le⟩
+  modulus := modulus
+  tail_le n k := by
+    rw [stage_eq n k, Set.sdiff_self, measure_empty]
+    exact zero_le
+
+@[simp] theorem SchnorrTest.ofExactStages_openCode (e : UniformOpenCode)
+    (hmeas : ∀ n, fairCoin (e.denote n) ≤ (2⁻¹ : ℝ≥0∞) ^ n) (m : NatFunctionCode)
+    (hstage : ∀ n k, e.stageSet n (m.apply₂ n k) = e.denote n) :
+    (SchnorrTest.ofExactStages e hmeas m hstage).openCode = e := rfl
+
 /-- A point is Schnorr random when no Schnorr test captures it. -/
 def IsSchnorrRandom (x : Cantor) : Prop := ∀ T : SchnorrTest, ¬T.Captures x
 
