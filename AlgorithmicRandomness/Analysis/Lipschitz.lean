@@ -38,6 +38,20 @@ open scoped NNReal NNRat
 
 namespace AlgorithmicRandomness
 
+/-- The canonical extension of unit-interval data to all of `ℝ`, constant outside `[0, 1]`. It is
+factored out of the bundles that use it so that a structure field can mention it: a field cannot
+refer to a projection derived from the structure being defined. -/
+noncomputable def unitExtend (u : Set.Icc (0 : ℝ) 1 → ℝ) : ℝ → ℝ :=
+  Set.IccExtend zero_le_one u
+
+@[simp] theorem unitExtend_val (u : Set.Icc (0 : ℝ) 1 → ℝ) (x : Set.Icc (0 : ℝ) 1) :
+    unitExtend u (x : ℝ) = u x :=
+  Set.IccExtend_val zero_le_one u x
+
+theorem unitExtend_of_mem (u : Set.Icc (0 : ℝ) 1 → ℝ) {x : ℝ} (hx : x ∈ Set.Icc (0 : ℝ) 1) :
+    unitExtend u x = u ⟨x, hx⟩ :=
+  Set.IccExtend_of_mem zero_le_one u hx
+
 /-- A Lipschitz function on `[0, 1]` together with a program computing its exact values at the
 dyadic cut points. -/
 structure ComputableLipschitz where
@@ -57,8 +71,7 @@ namespace ComputableLipschitz
 
 /-- The ambient function on `ℝ`: constant outside `[0, 1]`. This is a canonical extension of the
 data, not an arbitrary choice of one — which is what keeps the global statements honest. -/
-noncomputable def toFun (f : ComputableLipschitz) : ℝ → ℝ :=
-  Set.IccExtend zero_le_one f.unitFun
+noncomputable def toFun (f : ComputableLipschitz) : ℝ → ℝ := unitExtend f.unitFun
 
 @[simp] theorem toFun_val (f : ComputableLipschitz) (x : Set.Icc (0 : ℝ) 1) :
     f.toFun (x : ℝ) = f.unitFun x :=

@@ -36,6 +36,7 @@ import AlgorithmicRandomness.Analysis.UnitDyadic
 import AlgorithmicRandomness.Analysis.Extension
 import AlgorithmicRandomness.Analysis.CDFProgram
 import AlgorithmicRandomness.Analysis.LipschitzRandomness
+import AlgorithmicRandomness.Analysis.ComputableMonotone
 import AlgorithmicRandomness.Complexity.PrefixMachine
 import AlgorithmicRandomness.Complexity.Universal
 import AlgorithmicRandomness.Complexity.PrefixComplexity
