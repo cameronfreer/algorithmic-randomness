@@ -248,5 +248,81 @@ theorem primrec_lt : Primrec₂ lt :=
 theorem primrec_ofNat : Primrec ofNat :=
   Primrec₂.natPair.comp Primrec.id (Primrec.const 0)
 
+/-! ## Truncated subtraction and the dyadic floor
+
+Both are stated after comparison, which is what their correctness proofs case on. -/
+
+/-- Truncated subtraction of coded rationals: the value is `ℚ≥0` subtraction, so it is `0` when
+the subtrahend is the larger. -/
+def sub (m k : ℕ) : ℕ :=
+  Nat.pair (m.unpair.1 * (k.unpair.2 + 1) - k.unpair.1 * (m.unpair.2 + 1))
+    ((m.unpair.2 + 1) * (k.unpair.2 + 1) - 1)
+
+theorem value_sub (m k : ℕ) : value (sub m k) = value m - value k := by
+  have hpos : 0 < (m.unpair.2 + 1) * (k.unpair.2 + 1) :=
+    Nat.mul_pos m.unpair.2.succ_pos k.unpair.2.succ_pos
+  rcases le_total (value m) (value k) with h | h
+  · have hnum : m.unpair.1 * (k.unpair.2 + 1) ≤ k.unpair.1 * (m.unpair.2 + 1) := by
+      have hle := (le_iff m k).mpr h
+      rwa [le, decide_eq_true_iff] at hle
+    rw [sub, value_pair, Nat.sub_add_cancel hpos, Nat.sub_eq_zero_of_le hnum,
+      tsub_eq_zero_of_le h, Nat.cast_zero, zero_div]
+  · have hnum : k.unpair.1 * (m.unpair.2 + 1) ≤ m.unpair.1 * (k.unpair.2 + 1) := by
+      have hle := (le_iff k m).mpr h
+      rwa [le, decide_eq_true_iff] at hle
+    have hcast : ((m.unpair.2 : ℚ≥0) + 1) * (k.unpair.1 : ℚ≥0)
+        ≤ (m.unpair.1 : ℚ≥0) * ((k.unpair.2 : ℚ≥0) + 1) := by
+      have hc := (Nat.cast_le (α := ℚ≥0)).mpr hnum
+      push_cast at hc
+      rw [mul_comm ((m.unpair.2 : ℚ≥0) + 1)]
+      exact hc
+    rw [eq_comm, tsub_eq_iff_eq_add_of_le h, sub, value_pair, Nat.sub_add_cancel hpos, value,
+      value]
+    push_cast
+    field_simp
+    rw [tsub_add_cancel_of_le hcast]
+
+theorem primrec_sub : Primrec₂ sub :=
+  Primrec₂.natPair.comp
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+      (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))))
+    (Primrec.nat_sub.comp
+      (Primrec.nat_mul.comp
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)))
+        (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd))))
+      (Primrec.const 1))
+
+/-- The floor of `value m * 2 ^ n`, as a natural: the index of the level-`n` dyadic cut point at
+or below the coded rational. -/
+def floorScalePowTwo (n m : ℕ) : ℕ := m.unpair.1 * 2 ^ n / (m.unpair.2 + 1)
+
+theorem floorScalePowTwo_le (n m : ℕ) :
+    ((floorScalePowTwo n m : ℕ) : ℚ≥0) ≤ value m * 2 ^ n := by
+  have hb : (0 : ℚ≥0) < ((m.unpair.2 + 1 : ℕ) : ℚ≥0) := by positivity
+  rw [value, div_mul_eq_mul_div, le_div_iff₀ hb, floorScalePowTwo]
+  exact_mod_cast Nat.div_mul_le_self (m.unpair.1 * 2 ^ n) (m.unpair.2 + 1)
+
+theorem lt_floorScalePowTwo_add_one (n m : ℕ) :
+    value m * 2 ^ n < ((floorScalePowTwo n m : ℕ) : ℚ≥0) + 1 := by
+  have hb : (0 : ℚ≥0) < ((m.unpair.2 + 1 : ℕ) : ℚ≥0) := by positivity
+  have key : m.unpair.1 * 2 ^ n
+      < (m.unpair.1 * 2 ^ n / (m.unpair.2 + 1) + 1) * (m.unpair.2 + 1) := by
+    have hmod := Nat.div_add_mod (m.unpair.1 * 2 ^ n) (m.unpair.2 + 1)
+    have hlt : m.unpair.1 * 2 ^ n % (m.unpair.2 + 1) < m.unpair.2 + 1 :=
+      Nat.mod_lt _ m.unpair.2.succ_pos
+    rw [add_mul, one_mul, mul_comm (m.unpair.1 * 2 ^ n / (m.unpair.2 + 1))]
+    omega
+  rw [value, div_mul_eq_mul_div, div_lt_iff₀ hb, floorScalePowTwo]
+  exact_mod_cast key
+
+theorem primrec_floorScalePowTwo : Primrec₂ floorScalePowTwo :=
+  Primrec.nat_div.comp
+    (Primrec.nat_mul.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.snd))
+      ((Primrec₂.unpaired'.1 Nat.Primrec.pow).comp (Primrec.const 2) Primrec.fst))
+    (Primrec.succ.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.snd)))
+
 end NNRatCode
 end AlgorithmicRandomness

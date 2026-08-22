@@ -242,5 +242,62 @@ theorem primrec_toNNRat : Primrec toNNRat := by
       (Primrec.nat_mul.comp (Primrec.succ.comp ha) (Primrec.succ.comp hb))
       (Primrec.const 1))
 
+/-! ## Clamping into the unit interval
+
+The result is a *nonnegative* code: the clamp is nonnegative by construction, and both consumers —
+the dyadic floor and scaling by a natural — live in the nonnegative layer. The truncated `ℚ≥0`
+subtraction stays inside that layer; the statement below is in `ℚ`, with `max` and `min`. -/
+
+/-- The clamp of a signed coded rational into `[0, 1]`, as a coded nonnegative rational. -/
+def clampUnit (m : ℕ) : ℕ :=
+  if NNRatCode.le (NNRatCode.sub m.unpair.1 m.unpair.2) (NNRatCode.ofNat 1) then
+    NNRatCode.sub m.unpair.1 m.unpair.2
+  else NNRatCode.ofNat 1
+
+private theorem coe_value_sub_parts (m : ℕ) :
+    ((NNRatCode.value (NNRatCode.sub m.unpair.1 m.unpair.2) : ℚ≥0) : ℚ) = max 0 (value m) := by
+  rw [NNRatCode.value_sub]
+  rcases le_total (NNRatCode.value m.unpair.2) (NNRatCode.value m.unpair.1) with h | h
+  · rw [NNRat.coe_sub h, value, max_eq_right (by
+      have : ((NNRatCode.value m.unpair.2 : ℚ≥0) : ℚ) ≤ (NNRatCode.value m.unpair.1 : ℚ≥0) := by
+        exact_mod_cast h
+      linarith)]
+  · rw [tsub_eq_zero_of_le h, NNRat.cast_zero, value, max_eq_left (by
+      have : ((NNRatCode.value m.unpair.1 : ℚ≥0) : ℚ) ≤ (NNRatCode.value m.unpair.2 : ℚ≥0) := by
+        exact_mod_cast h
+      linarith)]
+
+theorem value_clampUnit (m : ℕ) :
+    ((NNRatCode.value (clampUnit m) : ℚ≥0) : ℚ) = max 0 (min 1 (value m)) := by
+  rw [clampUnit]
+  by_cases hc : NNRatCode.le (NNRatCode.sub m.unpair.1 m.unpair.2) (NNRatCode.ofNat 1) = true
+  · rw [if_pos hc, coe_value_sub_parts]
+    have h1 : NNRatCode.value (NNRatCode.sub m.unpair.1 m.unpair.2) ≤ 1 := by
+      have := (NNRatCode.le_iff _ _).mp hc
+      simpa using this
+    have h2 : max 0 (value m) ≤ 1 := by
+      rw [← coe_value_sub_parts m]
+      exact_mod_cast h1
+    rw [min_eq_right (le_trans (le_max_right 0 (value m)) h2)]
+  · rw [if_neg hc, NNRatCode.value_ofNat, Nat.cast_one, NNRat.cast_one]
+    have h1 : ¬NNRatCode.value (NNRatCode.sub m.unpair.1 m.unpair.2) ≤ 1 := by
+      intro hle
+      exact hc ((NNRatCode.le_iff _ _).mpr (by simpa using hle))
+    have h2 : (1 : ℚ) < max 0 (value m) := by
+      rw [← coe_value_sub_parts m]
+      exact_mod_cast lt_of_not_ge h1
+    have h3 : (1 : ℚ) ≤ value m := le_of_lt (by
+      rcases max_cases (0 : ℚ) (value m) with ⟨he, -⟩ | ⟨he, -⟩ <;> rw [he] at h2 <;> linarith)
+    rw [min_eq_left h3, max_eq_right (by linarith : (0:ℚ) ≤ 1)]
+
+theorem primrec_clampUnit : Primrec clampUnit := by
+  have hsub : Primrec fun m : ℕ ↦ NNRatCode.sub m.unpair.1 m.unpair.2 :=
+    NNRatCode.primrec_sub.comp (Primrec.fst.comp Primrec.unpair)
+      (Primrec.snd.comp Primrec.unpair)
+  have hcond := Primrec.cond
+    (NNRatCode.primrec_le.comp hsub (Primrec.const (NNRatCode.ofNat 1))) hsub
+    (Primrec.const (NNRatCode.ofNat 1))
+  exact hcond.of_eq fun m ↦ by rw [clampUnit, Bool.cond_eq_ite]
+
 end RatCode
 end AlgorithmicRandomness
