@@ -230,4 +230,66 @@ theorem slope_nonneg_of_monotone {f : ℝ → ℝ} (hf : Monotone f) (σ : BitSt
 
 end AffineDyadicGrid
 
+/-! ## The modular core
+
+The covering argument needs one mesh point of the grid `1 / (2 ^ n * k)` to be reachable as a
+dyadic point of the grid `1 / 2 ^ n` shifted by a multiple of `1 / k`. That is a statement about
+`ℤ` alone, and it is isolated here so that the geometry never carries arithmetic detail.
+
+The shift is *signed*. Given `M`, the index `i` is the unique representative below `2 ^ n` with
+`i * k ≡ M` modulo `2 ^ n`, and `v` is then forced to be `(M - i * k) / 2 ^ n`. Normalizing `v` to
+a nonnegative residue would change the rational identity by an integer and force a compensating
+change in `i`, whose range is already fixed.
+
+Coprimality is stated as `Nat.Coprime`, not as parity: the covering proof chooses an odd `k` and
+converts once, rather than carrying parity through every line. -/
+
+theorem coprime_two_pow_of_odd {k : ℕ} (hk : Odd k) (n : ℕ) : Nat.Coprime k (2 ^ n) :=
+  Nat.Coprime.pow_right n (Nat.coprime_two_right.mpr hk)
+
+/-- **The Bézout step.** Every multiple of `1 / (2 ^ n * k)` up to `1` is a dyadic point of level
+`n` shifted by an integer multiple of `1 / k`, with the multiple bounded by `k`. -/
+theorem exists_dyadic_shift_decomposition {k n M : ℕ} (hk : 0 < k)
+    (hcop : Nat.Coprime k (2 ^ n)) (hM : M ≤ 2 ^ n * k) :
+    ∃ i : ℕ, i < 2 ^ n ∧ ∃ v : ℤ, |v| ≤ (k : ℤ) ∧ (i : ℤ) * k + v * 2 ^ n = M := by
+  have hpow : (0 : ℤ) < 2 ^ n := by positivity
+  obtain ⟨a, b, hab⟩ := Nat.isCoprime_iff_coprime.mpr hcop
+  rw [Nat.cast_pow, Nat.cast_ofNat] at hab
+  set q : ℤ := (M * a) / 2 ^ n with hq
+  set i : ℤ := (M * a) % 2 ^ n with hi
+  have hsplit : 2 ^ n * q + i = (M : ℤ) * a := Int.mul_ediv_add_emod _ _
+  have hi0 : 0 ≤ i := Int.emod_nonneg _ (ne_of_gt hpow)
+  have hilt : i < 2 ^ n := Int.emod_lt_of_pos _ hpow
+  have hcast : ((i.toNat : ℕ) : ℤ) = i := Int.toNat_of_nonneg hi0
+  have hkpos : (0 : ℤ) < k := by exact_mod_cast hk
+  have hMle : (M : ℤ) ≤ 2 ^ n * k := by exact_mod_cast hM
+  refine ⟨i.toNat, ?_, (M : ℤ) * b + q * k, ?_, ?_⟩
+  · exact_mod_cast hcast ▸ hilt
+  · have hkey : ((M : ℤ) * b + q * k) * 2 ^ n = (M : ℤ) - i * k := by
+      linear_combination (k : ℤ) * hsplit + (M : ℤ) * hab
+    rw [abs_le]
+    constructor
+    · have h1 : -((k : ℤ) * 2 ^ n) ≤ ((M : ℤ) * b + q * k) * 2 ^ n := by
+        rw [hkey]
+        nlinarith [mul_le_mul_of_nonneg_right hilt.le hkpos.le]
+      have h2 : (-(k : ℤ)) * 2 ^ n ≤ ((M : ℤ) * b + q * k) * 2 ^ n := by linarith [h1]
+      exact le_of_mul_le_mul_right h2 hpow
+    · have h1 : ((M : ℤ) * b + q * k) * 2 ^ n ≤ (k : ℤ) * 2 ^ n := by
+        rw [hkey]
+        nlinarith [mul_nonneg hi0 hkpos.le]
+      exact le_of_mul_le_mul_right h1 hpow
+  · rw [hcast]
+    linear_combination (k : ℤ) * hsplit + (M : ℤ) * hab
+
+/-- The rational form: the decomposition is exactly the mesh point. -/
+theorem dyadic_add_shift_eq_mesh {k n M i : ℕ} {v : ℤ} (hk : 0 < k)
+    (h : (i : ℤ) * k + v * 2 ^ n = M) :
+    ((i : ℚ) / 2 ^ n) + (v : ℚ) / k = (M : ℚ) / (2 ^ n * k) := by
+  have hk' : (k : ℚ) ≠ 0 := by positivity
+  have hpow : ((2 : ℚ) ^ n) ≠ 0 := by positivity
+  have h' : (i : ℚ) * k + (v : ℚ) * 2 ^ n = (M : ℚ) := by
+    exact_mod_cast congrArg (fun z : ℤ ↦ (z : ℚ)) h
+  field_simp
+  linear_combination h'
+
 end AlgorithmicRandomness
