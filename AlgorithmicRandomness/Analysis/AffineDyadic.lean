@@ -3,7 +3,7 @@ Copyright (c) 2026 Cameron Freer. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
-import AlgorithmicRandomness.Analysis.Dyadic
+import AlgorithmicRandomness.Analysis.DyadicGrid
 import AlgorithmicRandomness.Coding.RatCode
 import Mathlib.LinearAlgebra.AffineSpace.Slope
 
@@ -291,5 +291,123 @@ theorem dyadic_add_shift_eq_mesh {k n M i : ℕ} {v : ℤ} (hk : 0 < k)
     exact_mod_cast congrArg (fun z : ℤ ↦ (z : ℚ)) h
   field_simp
   linear_combination h'
+
+/-! ## The finite family
+
+For one fixed `k`, the family is indexed by `l` with `k / 2 < l ≤ k` and by the signed shift
+multiplier `v` with `|v| ≤ k`. The resolution `n` and the word index `i` are *not* parameters of
+the family: they are chosen per interval, and the grid is what stays fixed. Indexing by `n` as well
+would make the family infinite.
+
+A grid of the family has scale `l / k` and shift `l * v / k ^ 2`. The second is the affine
+translation, not the auxiliary mesh shift `v / k`: the mesh shift is measured before rescaling, so
+the translation is `p` times it.
+
+Everything here is private. The geometry consumes only the identities below and the membership
+lemma, never the shape of the family. -/
+
+/-- The coded shift `l * v / k ^ 2`, with the sign carried by the two parts of the signed code. -/
+private def shiftCodeOfLKv (k l : ℕ) (v : ℤ) : ℕ :=
+  if 0 ≤ v then Nat.pair (Nat.pair (l * v.toNat) (k * k - 1)) (Nat.pair 0 0)
+  else Nat.pair (Nat.pair 0 0) (Nat.pair (l * (-v).toNat) (k * k - 1))
+
+/-- The grid with scale `l / k` and shift `l * v / k ^ 2`. -/
+private def gridOfLKv (k l : ℕ) (v : ℤ) (hl : 0 < l) : AffineDyadicGrid where
+  scaleCode := Nat.pair l (k - 1)
+  shiftCode := shiftCodeOfLKv k l v
+  scale_pos := by
+    rw [NNRatCode.value_pos_iff, Nat.unpair_pair]
+    exact hl
+
+private theorem scale_gridOfLKv {k l : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) :
+    (gridOfLKv k l v hl).scale = (l : ℝ) / k := by
+  rw [AffineDyadicGrid.scale, gridOfLKv, NNRatCode.value_pair, Nat.sub_add_cancel hk]
+  push_cast
+  ring
+
+private theorem shift_gridOfLKv {k l : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) :
+    (gridOfLKv k l v hl).shift = (l : ℝ) * v / (k : ℝ) ^ 2 := by
+  have hkk : 0 < k * k := Nat.mul_pos hk hk
+  rw [AffineDyadicGrid.shift, gridOfLKv, shiftCodeOfLKv]
+  by_cases hv : 0 ≤ v
+  · rw [if_pos hv, RatCode.value_pair, NNRatCode.value_pair, NNRatCode.value_pair,
+      Nat.sub_add_cancel hkk]
+    have hto : ((v.toNat : ℕ) : ℝ) = (v : ℝ) := by exact_mod_cast Int.toNat_of_nonneg hv
+    push_cast
+    rw [hto]
+    ring
+  · rw [if_neg hv, RatCode.value_pair, NNRatCode.value_pair, NNRatCode.value_pair,
+      Nat.sub_add_cancel hkk]
+    have hto : (((-v).toNat : ℕ) : ℝ) = -(v : ℝ) := by
+      have h0 : (0 : ℤ) ≤ -v := by omega
+      exact_mod_cast Int.toNat_of_nonneg h0
+    push_cast
+    rw [hto]
+    ring
+
+/-- The finite family for a fixed `k`. -/
+private noncomputable def gridFamily (k : ℕ) : Finset AffineDyadicGrid :=
+  letI := Classical.decEq AffineDyadicGrid
+  (((Finset.Icc (k / 2 + 1) k) ×ˢ (Finset.Icc (-(k : ℤ)) (k : ℤ))).attach).image
+    fun p ↦ gridOfLKv k p.1.1 p.1.2 (by
+      have h := (Finset.mem_Icc.mp (Finset.mem_product.mp p.2).1).1
+      omega)
+
+/-- Membership, stated against the parameter bounds. This is the only door into the family. -/
+private theorem gridOfLKv_mem_family {k l : ℕ} {v : ℤ} (hl : 0 < l) (hl1 : k / 2 < l)
+    (hl2 : l ≤ k) (hv : |v| ≤ (k : ℤ)) : gridOfLKv k l v hl ∈ gridFamily k := by
+  classical
+  rw [gridFamily]
+  refine Finset.mem_image.mpr ⟨⟨(l, v), ?_⟩, Finset.mem_attach _ _, rfl⟩
+  refine Finset.mem_product.mpr ⟨Finset.mem_Icc.mpr ⟨by omega, hl2⟩, Finset.mem_Icc.mpr ?_⟩
+  exact ⟨(abs_le.mp hv).1, (abs_le.mp hv).2⟩
+
+/-! ### The endpoint identities
+
+With `σ` the word of length `n` at index `i`, and `i * k + v * 2 ^ n = M` the decomposition, the
+left endpoint is exactly the mesh point `p * M / (2 ^ n * k)`. The width and right endpoint are
+recorded here too, since the containment and distortion estimates consume all three and should not
+have to reopen the bridge between codes and semantics. -/
+
+private theorem width_gridOfLKv {k l n i : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) (hi : i < 2 ^ n) :
+    (gridOfLKv k l v hl).width ((BitString.wordsOfLength n).getD i [])
+      = ((l : ℝ) / k) / 2 ^ n := by
+  have hlt : i < (BitString.wordsOfLength n).length := by
+    rw [BitString.length_wordsOfLength]; exact hi
+  have hlen : ((BitString.wordsOfLength n).getD i []).length = n := by
+    refine BitString.length_of_mem_wordsOfLength ?_
+    rw [List.getD_eq_getElem _ _ hlt]
+    exact List.getElem_mem _
+  rw [AffineDyadicGrid.width, scale_gridOfLKv hk hl, dyadicWidth, hlen, inv_pow, div_eq_mul_inv]
+  ring
+
+private theorem left_gridOfLKv {k l n i M : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) (hi : i < 2 ^ n)
+    (h : (i : ℤ) * k + v * 2 ^ n = M) :
+    (gridOfLKv k l v hl).left ((BitString.wordsOfLength n).getD i [])
+      = ((l : ℝ) / k) * ((M : ℝ) / (2 ^ n * k)) := by
+  have hlt : i < (BitString.wordsOfLength n).length := by
+    rw [BitString.length_wordsOfLength]; exact hi
+  have hlen : ((BitString.wordsOfLength n).getD i []).length = n := by
+    refine BitString.length_of_mem_wordsOfLength ?_
+    rw [List.getD_eq_getElem _ _ hlt]
+    exact List.getElem_mem _
+  have hkR : (k : ℝ) ≠ 0 := by positivity
+  have hmesh : ((i : ℝ) / 2 ^ n) + (v : ℝ) / k = (M : ℝ) / (2 ^ n * k) := by
+    have hq := congrArg (fun r : ℚ ↦ (r : ℝ)) (dyadic_add_shift_eq_mesh (i := i) hk h)
+    push_cast at hq
+    exact hq
+  rw [AffineDyadicGrid.left, scale_gridOfLKv hk hl, shift_gridOfLKv hk hl, dyadicLeft_eq_gridPoint,
+    hlen, gridIndex_getD_wordsOfLength hi, gridPoint, ← hmesh]
+  field_simp
+
+private theorem right_gridOfLKv {k l n i M : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) (hi : i < 2 ^ n)
+    (h : (i : ℤ) * k + v * 2 ^ n = M) :
+    (gridOfLKv k l v hl).right ((BitString.wordsOfLength n).getD i [])
+      = ((l : ℝ) / k) * (((M + k : ℕ) : ℝ) / (2 ^ n * k)) := by
+  have hkR : (k : ℝ) ≠ 0 := by positivity
+  have hpow : ((2 : ℝ) ^ n) ≠ 0 := by positivity
+  rw [AffineDyadicGrid.right, left_gridOfLKv hk hl hi h, width_gridOfLKv hk hl hi]
+  push_cast
+  field_simp
 
 end AlgorithmicRandomness
