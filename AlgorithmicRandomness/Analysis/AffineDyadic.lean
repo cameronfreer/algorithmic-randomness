@@ -693,16 +693,6 @@ private theorem right_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
   rw [AffineDyadicGrid.right, AffineDyadicGrid.right, left_doubleGrid, width_doubleGrid]
   ring
 
-private theorem mem_interval_doubleGrid {G : AffineDyadicGrid} {σ : BitString} {z : ℝ} :
-    z ∈ (doubleGrid G).interval σ ↔ z / 2 ∈ G.interval σ := by
-  rw [AffineDyadicGrid.interval, AffineDyadicGrid.interval, left_doubleGrid, right_doubleGrid,
-    Set.mem_Icc, Set.mem_Icc]
-  constructor
-  · rintro ⟨h1, h2⟩
-    constructor <;> linarith
-  · rintro ⟨h1, h2⟩
-    constructor <;> linarith
-
 private noncomputable def normalizedGridFamily (k : ℕ) : Finset AffineDyadicGrid :=
   (gridFamily k).image doubleGrid
 
@@ -728,5 +718,77 @@ private theorem exists_outer_interval_strict {k : ℕ} (hk : 3 ≤ k) (hkodd : O
     linarith
   · rw [width_doubleGrid]
     linarith
+
+/-! ## The inner approximation
+
+Shrink the target by `ε h` at each end, cover the shrunken interval from outside at precision
+`α₀ = 1 + ε`, and the covering interval is trapped strictly inside the original. The two shaves and
+the outer slack are chosen so that they cancel exactly: with `h = (y - x) / α` the covered width is
+below `(1 + ε) h`, while the room available at each end is `ε h`, and `1 + 2ε = α`.
+
+This consumes the *strict* outer theorem. With only the subset form, `a < u` and `v < b` would
+degrade to `≤` and the conclusion would be `y - x ≤ α * width`. -/
+
+private theorem exists_inner_interval {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k) {α x y : ℝ}
+    (hα : 1 < α) (hkα : 1 + 8 / (k : ℝ) < (α + 1) / 2) (hx : 0 < x) (hxy : x < y) (hy : y < 1) :
+    ∃ G ∈ normalizedGridFamily k, ∃ σ,
+      G.interval σ ⊆ Set.Icc x y ∧ y - x < α * G.width σ := by
+  have hα0 : 0 < α := by linarith
+  set ε : ℝ := (α - 1) / 2 with hε
+  set h : ℝ := (y - x) / α with hh
+  have hε0 : 0 < ε := by rw [hε]; linarith
+  have hh0 : 0 < h := by rw [hh]; positivity
+  have hyx : y - x = α * h := by rw [hh]; field_simp
+  have hu0 : 0 < x + ε * h := by positivity
+  have huv : x + ε * h < y - ε * h := by nlinarith
+  have hv1 : y - ε * h < 1 := by nlinarith
+  obtain ⟨G, hG, σ, ha, hb, hw⟩ :=
+    exists_outer_interval_strict hk hkodd (α := (α + 1) / 2) hkα hu0 huv hv1
+  have hdiff : (y - ε * h) - (x + ε * h) = h := by rw [hε]; ring_nf; linarith [hyx]
+  have hwlt : G.width σ < (1 + ε) * h := by
+    rw [hdiff] at hw
+    calc G.width σ < (α + 1) / 2 * h := hw
+      _ = (1 + ε) * h := by rw [hε]; ring
+  have hright : G.right σ = G.left σ + G.width σ := rfl
+  refine ⟨G, hG, σ, ?_, ?_⟩
+  · rw [AffineDyadicGrid.interval]
+    refine Set.Icc_subset_Icc ?_ ?_
+    · nlinarith [hb, hwlt, hright]
+    · nlinarith [ha, hwlt, hright]
+  · have hlt : h < G.width σ := by
+      rw [hright] at hb
+      nlinarith [ha, hb, hdiff]
+    nlinarith [hlt, hyx]
+
+/-! ## The covering lemma -/
+
+/-- **BMN Lemma 4.1.** One finite family of rationally scaled and shifted dyadic grids approximates
+every interval interior to `(0, 1)` from both sides, to any rational precision.
+
+A single family serves both conclusions: it is chosen at precision `(α + 1) / 2`, which is below
+`α` for the outer approximation and is exactly what the inner construction needs.
+
+The family is *semantic*: it is not computed uniformly from a code for `α`. That stronger
+transformation, which BMN remark on, is not part of this development. It is not needed here,
+because every member already carries concrete natural codes for its scale and shift, so a grid
+selected later still yields an actual computable object. -/
+theorem exists_finite_affineDyadicGrids {α : ℚ} (hα : 1 < α) :
+    ∃ grids : Finset AffineDyadicGrid,
+      (∀ {x y : ℝ}, 0 < x → x < y → y < 1 →
+        ∃ G ∈ grids, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < (α : ℝ) * (y - x)) ∧
+      (∀ {x y : ℝ}, 0 < x → x < y → y < 1 →
+        ∃ G ∈ grids, ∃ σ, G.interval σ ⊆ Set.Icc x y ∧ y - x < (α : ℝ) * G.width σ) := by
+  have hαR : (1 : ℝ) < (α : ℝ) := by exact_mod_cast hα
+  have hα0 : (1 : ℝ) < ((α : ℝ) + 1) / 2 := by linarith
+  obtain ⟨k, hk, hkodd, hkα⟩ := exists_odd_k hα0
+  refine ⟨normalizedGridFamily k, ?_, ?_⟩
+  · intro x y hx hxy hy
+    obtain ⟨G, hG, σ, hl, hr, hw⟩ := exists_outer_interval_strict hk hkodd hkα hx hxy hy
+    refine ⟨G, hG, σ, ?_, ?_⟩
+    · rw [AffineDyadicGrid.interval]
+      exact Set.Icc_subset_Icc hl.le hr.le
+    · nlinarith [hw, hxy]
+  · intro x y hx hxy hy
+    exact exists_inner_interval hk hkodd hαR hkα hx hxy hy
 
 end AlgorithmicRandomness
