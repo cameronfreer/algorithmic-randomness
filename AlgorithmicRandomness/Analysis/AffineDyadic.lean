@@ -529,4 +529,113 @@ private theorem exists_outer_scale_ratio {k : ℕ} (hk : 3 ≤ k) {α t : ℝ}
     _ = (1 + 8 / (k : ℝ)) * t := hfinal
     _ < α * t := mul_lt_mul_of_pos_right hα ht
 
+/-! ## Positioning
+
+The scale is chosen; what remains is to slide a cell of that scale so that it covers the target.
+The mesh is `1 / k` of a cell, so the left endpoint can be placed within one mesh unit below `x`,
+and the strict inequality `t + η < w` is exactly what makes the far end clear `y`.
+
+The same normalization that bounds the interval bounds the mesh index: `x < 1/2` and `p > 1/2`
+give `x / p < 1`, hence `M < 2 ^ n * k`, which is the modular theorem's hypothesis. No separate
+coarse estimate is needed. -/
+
+private theorem natCeil_sub_one_bracket {r : ℝ} (hr : 0 < r) :
+    (((⌈r⌉₊ - 1 : ℕ) : ℝ) < r ∧ r ≤ (⌈r⌉₊ : ℝ)) := by
+  have h1 : 1 ≤ ⌈r⌉₊ := Nat.one_le_ceil_iff.mpr hr
+  refine ⟨?_, Nat.le_ceil r⟩
+  rw [Nat.cast_sub h1, Nat.cast_one]
+  have := Nat.ceil_lt_add_one hr.le
+  linarith
+
+private theorem exists_odd_k {α : ℝ} (hα : 1 < α) :
+    ∃ k : ℕ, 3 ≤ k ∧ Odd k ∧ 1 + 8 / (k : ℝ) < α := by
+  have hα0 : (0 : ℝ) < α - 1 := by linarith
+  have hz : (0 : ℝ) < 8 / (α - 1) := by positivity
+  have hceil : 8 / (α - 1) ≤ (⌈8 / (α - 1)⌉₊ : ℝ) := Nat.le_ceil _
+  have h1 : 1 ≤ ⌈8 / (α - 1)⌉₊ := Nat.one_le_ceil_iff.mpr hz
+  refine ⟨2 * ⌈8 / (α - 1)⌉₊ + 1, by omega, Nat.odd_iff.mpr (by omega), ?_⟩
+  have hK0 : (0 : ℝ) < ((2 * ⌈8 / (α - 1)⌉₊ + 1 : ℕ) : ℝ) := by positivity
+  have hKgt : 8 / (α - 1) < ((2 * ⌈8 / (α - 1)⌉₊ + 1 : ℕ) : ℝ) := by
+    push_cast
+    linarith
+  rw [div_lt_iff₀ hα0] at hKgt
+  have h8 : (8 : ℝ) / ((2 * ⌈8 / (α - 1)⌉₊ + 1 : ℕ) : ℝ) < α - 1 := by
+    rw [div_lt_iff₀ hK0]
+    linarith
+  linarith
+
+private theorem exists_outer_interval_normalized {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+    {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1 / 2) :
+    ∃ G ∈ gridFamily k, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < α * (y - x) := by
+  have hknat : 0 < k := by omega
+  have hkR : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
+  have hk0 : (0 : ℝ) < (k : ℝ) := by linarith
+  have ht : 0 < y - x := by linarith
+  have ht_half : y - x < 1 / 2 := by linarith
+  obtain ⟨n, l, hl1, hl2, hlow, hhigh⟩ := exists_outer_scale_ratio hk hα ht ht_half
+  have hk2l : k < 2 * l := by omega
+  have hl0 : 0 < l := by omega
+  have hlR : (0 : ℝ) < (l : ℝ) := by exact_mod_cast hl0
+  have hlk : (l : ℝ) ≤ (k : ℝ) := by exact_mod_cast hl2
+  have hk2lR : (k : ℝ) < 2 * (l : ℝ) := by exact_mod_cast hk2l
+  have hpow0 : (0 : ℝ) < (2 : ℝ) ^ n := by positivity
+  have hden : (0 : ℝ) < (k : ℝ) * 2 ^ n := by positivity
+  set W : ℝ := (l : ℝ) / ((k : ℝ) * 2 ^ n) with hW
+  set η : ℝ := 1 / ((k : ℝ) * 2 ^ n) with hηdef
+  have hW0 : 0 < W := by rw [hW]; positivity
+  have hη0 : 0 < η := by rw [hηdef]; positivity
+  have hWk : W / k ≤ η := by
+    rw [hW, hηdef, div_div, div_le_div_iff₀ (by positivity) (by positivity)]
+    nlinarith
+  -- the mesh index below `x`
+  set r : ℝ := x * k / W with hr
+  have hr0 : 0 < r := by rw [hr]; positivity
+  obtain ⟨hb1, hb2⟩ := natCeil_sub_one_bracket hr0
+  set M : ℕ := ⌈r⌉₊ - 1 with hM
+  have hceil1 : 1 ≤ ⌈r⌉₊ := Nat.one_le_ceil_iff.mpr hr0
+  have hMsucc : ((⌈r⌉₊ : ℕ) : ℝ) = (M : ℝ) + 1 := by
+    rw [hM, Nat.cast_sub hceil1, Nat.cast_one]
+    ring
+  have hrW : r * (W / k) = x := by
+    rw [hr]
+    field_simp
+  have hM1 : (M : ℝ) * (W / k) < x := by
+    rw [← hrW]
+    exact mul_lt_mul_of_pos_right hb1 (by positivity)
+  have hM2 : x ≤ ((M : ℝ) + 1) * (W / k) := by
+    rw [← hrW, ← hMsucc]
+    exact mul_le_mul_of_nonneg_right hb2 (by positivity)
+  -- the modular hypothesis
+  have hrlt : r < (k : ℝ) * 2 ^ n := by
+    rw [hr, hW, div_div_eq_mul_div, div_lt_iff₀ (by positivity)]
+    have hxk : x * (k : ℝ) < (l : ℝ) := by nlinarith
+    have hmul := mul_lt_mul_of_pos_right hxk hden
+    linarith [hmul, mul_comm ((l : ℝ)) ((k : ℝ) * 2 ^ n)]
+  have hMle : M ≤ 2 ^ n * k := by
+    have hltR : (M : ℝ) < (k : ℝ) * 2 ^ n := lt_trans hb1 hrlt
+    have hnat : M < k * 2 ^ n := by exact_mod_cast hltR
+    rw [mul_comm k (2 ^ n)] at hnat
+    omega
+  obtain ⟨i, hi, v, hv, hdec⟩ :=
+    exists_dyadic_shift_decomposition hknat (coprime_two_pow_of_odd hkodd n) hMle
+  refine ⟨gridOfLKv k l v hl0, gridOfLKv_mem_family hl0 hl1 hl2 hv,
+    (BitString.wordsOfLength n).getD i [], ?_, ?_⟩
+  · have hleft := left_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi hdec
+    have hwidth := width_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi
+    have hAeq : ((l : ℝ) / k) * ((M : ℝ) / (2 ^ n * k)) = (M : ℝ) * (W / k) := by
+      rw [hW]
+      field_simp
+    have hWeq : ((l : ℝ) / k) / 2 ^ n = W := by
+      rw [hW]
+      field_simp
+    rw [AffineDyadicGrid.interval, AffineDyadicGrid.right, hleft, hwidth, hAeq, hWeq]
+    refine Set.Icc_subset_Icc (le_of_lt hM1) ?_
+    nlinarith [hM2, hWk, hlow]
+  · have hwidth := width_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi
+    have hWeq : ((l : ℝ) / k) / 2 ^ n = W := by
+      rw [hW]
+      field_simp
+    rw [hwidth, hWeq]
+    exact hhigh
+
 end AlgorithmicRandomness
