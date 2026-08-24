@@ -345,9 +345,15 @@ private theorem shift_gridOfLKv {k l : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) 
     rw [hto]
     ring
 
+-- The grids carry a proof field, so equality is not decidable by structure; one classical
+-- instance, local to this file, keeps every `Finset.image` below on the same footing.
+@[reducible] private noncomputable def decEqAffineDyadicGrid : DecidableEq AffineDyadicGrid :=
+  Classical.decEq _
+
+attribute [local instance] decEqAffineDyadicGrid
+
 /-- The finite family for a fixed `k`. -/
 private noncomputable def gridFamily (k : ℕ) : Finset AffineDyadicGrid :=
-  letI := Classical.decEq AffineDyadicGrid
   (((Finset.Icc (k / 2 + 1) k) ×ˢ (Finset.Icc (-(k : ℤ)) (k : ℤ))).attach).image
     fun p ↦ gridOfLKv k p.1.1 p.1.2 (by
       have h := (Finset.mem_Icc.mp (Finset.mem_product.mp p.2).1).1
@@ -356,7 +362,6 @@ private noncomputable def gridFamily (k : ℕ) : Finset AffineDyadicGrid :=
 /-- Membership, stated against the parameter bounds. This is the only door into the family. -/
 private theorem gridOfLKv_mem_family {k l : ℕ} {v : ℤ} (hl : 0 < l) (hl1 : k / 2 < l)
     (hl2 : l ≤ k) (hv : |v| ≤ (k : ℤ)) : gridOfLKv k l v hl ∈ gridFamily k := by
-  classical
   rw [gridFamily]
   refine Finset.mem_image.mpr ⟨⟨(l, v), ?_⟩, Finset.mem_attach _ _, rfl⟩
   refine Finset.mem_product.mpr ⟨Finset.mem_Icc.mpr ⟨by omega, hl2⟩, Finset.mem_Icc.mpr ?_⟩
@@ -564,9 +569,10 @@ private theorem exists_odd_k {α : ℝ} (hα : 1 < α) :
     linarith
   linarith
 
-private theorem exists_outer_interval_normalized {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+private theorem exists_outer_interval_normalized_strict {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
     {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1 / 2) :
-    ∃ G ∈ gridFamily k, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < α * (y - x) := by
+    ∃ G ∈ gridFamily k, ∃ σ,
+      G.left σ < x ∧ y < G.right σ ∧ G.width σ < α * (y - x) := by
   have hknat : 0 < k := by omega
   have hkR : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
   have hk0 : (0 : ℝ) < (k : ℝ) := by linarith
@@ -618,24 +624,109 @@ private theorem exists_outer_interval_normalized {k : ℕ} (hk : 3 ≤ k) (hkodd
     omega
   obtain ⟨i, hi, v, hv, hdec⟩ :=
     exists_dyadic_shift_decomposition hknat (coprime_two_pow_of_odd hkodd n) hMle
+  have hleft := left_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi hdec
+  have hwidth := width_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi
+  have hAeq : ((l : ℝ) / k) * ((M : ℝ) / (2 ^ n * k)) = (M : ℝ) * (W / k) := by
+    rw [hW]
+    field_simp
+  have hWeq : ((l : ℝ) / k) / 2 ^ n = W := by
+    rw [hW]
+    field_simp
   refine ⟨gridOfLKv k l v hl0, gridOfLKv_mem_family hl0 hl1 hl2 hv,
-    (BitString.wordsOfLength n).getD i [], ?_, ?_⟩
-  · have hleft := left_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi hdec
-    have hwidth := width_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi
-    have hAeq : ((l : ℝ) / k) * ((M : ℝ) / (2 ^ n * k)) = (M : ℝ) * (W / k) := by
-      rw [hW]
-      field_simp
-    have hWeq : ((l : ℝ) / k) / 2 ^ n = W := by
-      rw [hW]
-      field_simp
-    rw [AffineDyadicGrid.interval, AffineDyadicGrid.right, hleft, hwidth, hAeq, hWeq]
-    refine Set.Icc_subset_Icc (le_of_lt hM1) ?_
+    (BitString.wordsOfLength n).getD i [], ?_, ?_, ?_⟩
+  · rw [hleft, hAeq]
+    exact hM1
+  · rw [AffineDyadicGrid.right, hleft, hwidth, hAeq, hWeq]
     nlinarith [hM2, hWk, hlow]
-  · have hwidth := width_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi
-    have hWeq : ((l : ℝ) / k) / 2 ^ n = W := by
-      rw [hW]
-      field_simp
-    rw [hwidth, hWeq]
+  · rw [hwidth, hWeq]
     exact hhigh
+
+/-- The subset-shaped form. The strict core is kept, because the inner approximation needs the
+strict endpoint inequalities to produce a strict ratio. -/
+private theorem exists_outer_interval_normalized {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+    {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1 / 2) :
+    ∃ G ∈ gridFamily k, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < α * (y - x) := by
+  obtain ⟨G, hG, σ, h1, h2, h3⟩ :=
+    exists_outer_interval_normalized_strict hk hkodd hα hx hxy hy
+  refine ⟨G, hG, σ, ?_, h3⟩
+  rw [AffineDyadicGrid.interval]
+  exact Set.Icc_subset_Icc h1.le h2.le
+
+/-! ## Doubling, and the general interval
+
+Halving a target interval into `(0, 1/2)` and doubling the resulting grid is the whole of the
+normalization. Doubling acts on both codes, so it stays inside the coded layer, and the membership
+equivalence below makes the transport of containment definitional rather than a `Set.image`
+argument. Every endpoint gap scales by two, so strict inequalities survive. -/
+
+private def doubleGrid (G : AffineDyadicGrid) : AffineDyadicGrid where
+  scaleCode := NNRatCode.double G.scaleCode
+  shiftCode := RatCode.double G.shiftCode
+  scale_pos := by
+    rw [NNRatCode.value_double]
+    exact mul_pos two_pos G.scale_pos
+
+private theorem scale_doubleGrid (G : AffineDyadicGrid) :
+    (doubleGrid G).scale = 2 * G.scale := by
+  rw [AffineDyadicGrid.scale, AffineDyadicGrid.scale, doubleGrid, NNRatCode.value_double]
+  push_cast
+  ring
+
+private theorem shift_doubleGrid (G : AffineDyadicGrid) :
+    (doubleGrid G).shift = 2 * G.shift := by
+  rw [AffineDyadicGrid.shift, AffineDyadicGrid.shift, doubleGrid, RatCode.value_double]
+  push_cast
+  ring
+
+private theorem left_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
+    (doubleGrid G).left σ = 2 * G.left σ := by
+  rw [AffineDyadicGrid.left, AffineDyadicGrid.left, scale_doubleGrid, shift_doubleGrid]
+  ring
+
+private theorem width_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
+    (doubleGrid G).width σ = 2 * G.width σ := by
+  rw [AffineDyadicGrid.width, AffineDyadicGrid.width, scale_doubleGrid]
+  ring
+
+private theorem right_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
+    (doubleGrid G).right σ = 2 * G.right σ := by
+  rw [AffineDyadicGrid.right, AffineDyadicGrid.right, left_doubleGrid, width_doubleGrid]
+  ring
+
+private theorem mem_interval_doubleGrid {G : AffineDyadicGrid} {σ : BitString} {z : ℝ} :
+    z ∈ (doubleGrid G).interval σ ↔ z / 2 ∈ G.interval σ := by
+  rw [AffineDyadicGrid.interval, AffineDyadicGrid.interval, left_doubleGrid, right_doubleGrid,
+    Set.mem_Icc, Set.mem_Icc]
+  constructor
+  · rintro ⟨h1, h2⟩
+    constructor <;> linarith
+  · rintro ⟨h1, h2⟩
+    constructor <;> linarith
+
+private noncomputable def normalizedGridFamily (k : ℕ) : Finset AffineDyadicGrid :=
+  (gridFamily k).image doubleGrid
+
+private theorem mem_normalizedGridFamily {k : ℕ} {G : AffineDyadicGrid} (hG : G ∈ gridFamily k) :
+    doubleGrid G ∈ normalizedGridFamily k := by
+  rw [normalizedGridFamily]
+  exact Finset.mem_image_of_mem _ hG
+
+/-- **The outer approximation**, on the whole interior and still strict. -/
+private theorem exists_outer_interval_strict {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+    {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1) :
+    ∃ G ∈ normalizedGridFamily k, ∃ σ,
+      G.left σ < x ∧ y < G.right σ ∧ G.width σ < α * (y - x) := by
+  obtain ⟨G, hG, σ, h1, h2, h3⟩ := exists_outer_interval_normalized_strict hk hkodd hα
+    (by linarith : (0 : ℝ) < x / 2) (by linarith : x / 2 < y / 2) (by linarith : y / 2 < 1 / 2)
+  have h3' : G.width σ < α * (y - x) / 2 := by
+    rw [show α * (y - x) / 2 = α * (y / 2 - x / 2) by ring]
+    exact h3
+  refine ⟨doubleGrid G, mem_normalizedGridFamily hG, σ, ?_, ?_, ?_⟩
+  · rw [left_doubleGrid]
+    linarith
+  · rw [right_doubleGrid]
+    linarith
+  · rw [width_doubleGrid]
+    linarith
 
 end AlgorithmicRandomness
