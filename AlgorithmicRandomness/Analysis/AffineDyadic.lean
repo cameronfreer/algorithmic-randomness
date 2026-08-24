@@ -410,4 +410,123 @@ private theorem right_gridOfLKv {k l n i M : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0
   push_cast
   field_simp
 
+/-! ## Scale selection
+
+The arithmetic behind the covering lemma, isolated from all geometry and stated without `α`, so
+that the same lemma serves the outer construction and the inner one at `(α + 1) / 2`.
+
+The level `n` is chosen so that `t` sits in `[(1 - 1/k) 2⁻⁽ⁿ⁺¹⁾, (1 - 1/k) 2⁻ⁿ)`, and then `l` is
+the least admissible multiplier with `t + η < (l/k) 2⁻ⁿ`, where `η = 2⁻ⁿ/k` is the mesh. The first
+inequality is *strict* and has to be: a cell of width exactly `t` positioned with its left endpoint
+just below the target would have its right endpoint fall short. The extra mesh unit is what absorbs
+the positional error, and the strictness is also what makes the inner ratio strict later.
+
+The hypothesis is `t < 1/2`, the normalized case. Reducing a general interval to it is a separate
+affine normalization, not part of this lemma. -/
+
+private theorem exists_outer_scale {k : ℕ} (hk : 3 ≤ k) {t : ℝ} (ht : 0 < t)
+    (ht_half : t < 1 / 2) :
+    ∃ n l : ℕ, k / 2 < l ∧ l ≤ k ∧
+      t + 1 / ((k : ℝ) * 2 ^ n) < (l : ℝ) / ((k : ℝ) * 2 ^ n) ∧
+      (l : ℝ) / ((k : ℝ) * 2 ^ n) ≤ t + 2 / ((k : ℝ) * 2 ^ n) ∧
+      (2⁻¹ : ℝ) ^ n ≤ 4 * t := by
+  classical
+  have hkR : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
+  have hk0 : (0 : ℝ) < (k : ℝ) := by linarith
+  -- The level: the last one whose scaled width still exceeds `t * k`.
+  have hex : ∃ m : ℕ, ¬ (t * k < ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ m) := by
+    obtain ⟨m, hm⟩ := exists_pow_lt_of_lt_one
+      (show (0 : ℝ) < t * k / ((k : ℝ) - 1) from div_pos (by positivity) (by linarith))
+      (show (2⁻¹ : ℝ) < 1 by norm_num)
+    refine ⟨m, ?_⟩
+    rw [not_lt]
+    rw [lt_div_iff₀ (by linarith : (0 : ℝ) < (k : ℝ) - 1)] at hm
+    linarith
+  have hP0 : t * k < ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ 0 := by
+    rw [pow_zero, mul_one]
+    nlinarith
+  have hfind0 : Nat.find hex ≠ 0 := by
+    intro h
+    have hspec := Nat.find_spec hex
+    rw [h] at hspec
+    exact hspec hP0
+  obtain ⟨n, hn⟩ : ∃ n, Nat.find hex = n + 1 := ⟨Nat.find hex - 1, by omega⟩
+  have hPn : t * k < ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ n :=
+    not_not.mp (Nat.find_min hex (by omega))
+  have hQn : ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ (n + 1) ≤ t * k := by
+    have hspec := Nat.find_spec hex
+    rw [hn, not_lt] at hspec
+    exact hspec
+  -- Scaled quantities.
+  have hApos : (0 : ℝ) < (2⁻¹ : ℝ) ^ n := by positivity
+  have hpow0 : (0 : ℝ) < (2 : ℝ) ^ n := by positivity
+  have hA : (2⁻¹ : ℝ) ^ n * 2 ^ n = 1 := by rw [← mul_pow]; norm_num
+  have hden : (0 : ℝ) < (k : ℝ) * 2 ^ n := by positivity
+  set T : ℝ := t * (k : ℝ) * 2 ^ n with hTdef
+  have hT0 : 0 ≤ T := by positivity
+  have hTlt : T < (k : ℝ) - 1 := by
+    have h := mul_lt_mul_of_pos_right hPn hpow0
+    rw [mul_assoc ((k : ℝ) - 1), hA, mul_one] at h
+    exact h
+  have hTge : ((k : ℝ) - 1) / 2 ≤ T := by
+    have h := mul_le_mul_of_nonneg_right hQn hpow0.le
+    rw [pow_succ, mul_assoc ((k : ℝ) - 1), mul_assoc ((2⁻¹ : ℝ) ^ n), mul_comm (2⁻¹ : ℝ),
+      ← mul_assoc ((2⁻¹ : ℝ) ^ n), hA, one_mul] at h
+    linarith
+  -- The multiplier.
+  refine ⟨n, ⌊T⌋₊ + 2, ?_, ?_, ?_, ?_, ?_⟩
+  · have hlt : ((k : ℝ)) / 2 < ((⌊T⌋₊ + 2 : ℕ) : ℝ) := by
+      have h1 := Nat.lt_floor_add_one T
+      push_cast
+      linarith
+    have h2 : (((k / 2 : ℕ)) : ℝ) ≤ (k : ℝ) / 2 := by
+      exact_mod_cast Nat.cast_div_le
+    exact_mod_cast lt_of_le_of_lt h2 hlt
+  · have hfl : ⌊T⌋₊ < k - 1 := by
+      rw [Nat.floor_lt hT0, Nat.cast_sub (by omega : 1 ≤ k), Nat.cast_one]
+      exact hTlt
+    omega
+  · rw [lt_div_iff₀ hden]
+    have h1 := Nat.lt_floor_add_one T
+    push_cast
+    field_simp
+    nlinarith [h1, hden]
+  · rw [div_le_iff₀ hden]
+    have h2 := Nat.floor_le hT0
+    push_cast
+    field_simp
+    nlinarith [h2, hden]
+  · nlinarith [hQn, hApos, hkR, ht]
+
+/-- The `α`-threaded form. Keeping `α` out of the selection itself is what lets the same lemma
+serve the outer construction and the inner one at `(α + 1) / 2`; only the ratio bound changes, and
+`8 / k` rather than `2 / k` is the true cost, since the mesh unit absorbing the positional error is
+paid twice and the level is only within a factor of four of `t`. -/
+private theorem exists_outer_scale_ratio {k : ℕ} (hk : 3 ≤ k) {α t : ℝ}
+    (hα : 1 + 8 / (k : ℝ) < α) (ht : 0 < t) (ht_half : t < 1 / 2) :
+    ∃ n l : ℕ, k / 2 < l ∧ l ≤ k ∧
+      t + 1 / ((k : ℝ) * 2 ^ n) < (l : ℝ) / ((k : ℝ) * 2 ^ n) ∧
+      (l : ℝ) / ((k : ℝ) * 2 ^ n) < α * t := by
+  obtain ⟨n, l, hl1, hl2, hlow, hhigh, hsmall⟩ := exists_outer_scale hk ht ht_half
+  have hk0 : (0 : ℝ) < (k : ℝ) := by
+    have : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
+    linarith
+  refine ⟨n, l, hl1, hl2, hlow, ?_⟩
+  have heq : 2 / ((k : ℝ) * 2 ^ n) = (2 / (k : ℝ)) * (2⁻¹ : ℝ) ^ n := by
+    rw [inv_pow]
+    field_simp
+  have hstep : 2 / ((k : ℝ) * 2 ^ n) ≤ 8 * t / (k : ℝ) := by
+    rw [heq]
+    calc (2 / (k : ℝ)) * (2⁻¹ : ℝ) ^ n
+        ≤ (2 / (k : ℝ)) * (4 * t) := by
+          exact mul_le_mul_of_nonneg_left hsmall (by positivity)
+      _ = 8 * t / (k : ℝ) := by field_simp; ring
+  have hfinal : t + 8 * t / (k : ℝ) = (1 + 8 / (k : ℝ)) * t := by
+    field_simp
+  calc (l : ℝ) / ((k : ℝ) * 2 ^ n)
+      ≤ t + 2 / ((k : ℝ) * 2 ^ n) := hhigh
+    _ ≤ t + 8 * t / (k : ℝ) := by linarith
+    _ = (1 + 8 / (k : ℝ)) * t := hfinal
+    _ < α * t := mul_lt_mul_of_pos_right hα ht
+
 end AlgorithmicRandomness
