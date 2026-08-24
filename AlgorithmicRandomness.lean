@@ -38,6 +38,7 @@ import AlgorithmicRandomness.Analysis.CDFProgram
 import AlgorithmicRandomness.Analysis.LipschitzRandomness
 import AlgorithmicRandomness.Analysis.ComputableMonotone
 import AlgorithmicRandomness.Analysis.AffineDyadic
+import AlgorithmicRandomness.Analysis.RationalExpansion
 import AlgorithmicRandomness.Complexity.PrefixMachine
 import AlgorithmicRandomness.Complexity.Universal
 import AlgorithmicRandomness.Complexity.PrefixComplexity
