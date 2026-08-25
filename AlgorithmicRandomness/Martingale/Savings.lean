@@ -51,6 +51,59 @@ since `ℚ≥0` subtraction truncates. -/
 def TreeMartingale.SavingsProperty (M : TreeMartingale) : Prop :=
   ∀ σ τ, M.capital σ ≤ M.capital (σ ++ τ) + 1
 
+/-! ## Linear growth, and convergence along a successful path
+
+The savings property bounds how far the capital can fall; combined with fairness it also bounds how
+fast it can *rise*, since a child's gain is the sibling's loss and the sibling cannot lose more than
+`1`. The linear bound is what makes the mass of a level-`n` cell tend to zero, and the convergence
+theorem replaces "unbounded" by "tends to infinity" without any reference to the banked account. -/
+
+/-- One step. Savings applied to the *sibling*, together with fairness, bounds a child's gain. -/
+private theorem capital_append_le_add_one {M : TreeMartingale} (hs : M.SavingsProperty)
+    (σ : BitString) (b : Bool) : M.capital (σ ++ [b]) ≤ M.capital σ + 1 := by
+  have hfair := M.fair σ
+  refine (add_le_add_iff_right (M.capital σ)).mp ?_
+  cases b
+  · calc M.capital (σ ++ [false]) + M.capital σ
+        ≤ M.capital (σ ++ [false]) + (M.capital (σ ++ [true]) + 1) :=
+          add_le_add le_rfl (hs σ [true])
+      _ = 2 * M.capital σ + 1 := by rw [← add_assoc, hfair]
+      _ = M.capital σ + 1 + M.capital σ := by ring
+  · calc M.capital (σ ++ [true]) + M.capital σ
+        ≤ M.capital (σ ++ [true]) + (M.capital (σ ++ [false]) + 1) :=
+          add_le_add le_rfl (hs σ [false])
+      _ = 2 * M.capital σ + 1 := by
+          rw [← add_assoc, add_comm (M.capital (σ ++ [true])), hfair]
+      _ = M.capital σ + 1 + M.capital σ := by ring
+
+/-- **Linear growth.** A martingale with savings gains at most one unit per bit. -/
+theorem TreeMartingale.SavingsProperty.capital_le_root_add_length {M : TreeMartingale}
+    (hs : M.SavingsProperty) (σ : BitString) :
+    M.capital σ ≤ M.capital [] + (σ.length : ℚ≥0) := by
+  induction σ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton σ b ih =>
+    refine le_trans (capital_append_le_add_one hs σ b) ?_
+    rw [List.length_append, List.length_singleton]
+    push_cast
+    calc M.capital σ + 1 ≤ M.capital [] + (σ.length : ℚ≥0) + 1 := add_le_add ih le_rfl
+      _ = M.capital [] + ((σ.length : ℚ≥0) + 1) := by ring
+
+/-- **Convergence.** With savings, success upgrades from unbounded to divergent: once the capital
+reaches `c + 1` it never falls below `c` again. -/
+theorem TreeMartingale.Succeeds.tendsto_atTop_of_savings {M : TreeMartingale} {x : Cantor}
+    (h : M.Succeeds x) (hs : M.SavingsProperty) :
+    Filter.Tendsto (fun n ↦ M.capital (initSeg x n)) Filter.atTop Filter.atTop := by
+  rw [Filter.tendsto_atTop]
+  intro c
+  obtain ⟨n, hn⟩ := h (c + 1)
+  rw [Filter.eventually_atTop]
+  refine ⟨n, fun m hm ↦ ?_⟩
+  obtain ⟨τ, hτ⟩ := initSeg_prefix_of_le hm
+  have hsav := hs (initSeg x n) τ
+  rw [hτ] at hsav
+  exact (add_le_add_iff_right 1).mp (le_trans hn hsav)
+
 /-! ## The positive shift
 
 Betting in proportion requires a positive denominator, so the source is shifted first. -/
