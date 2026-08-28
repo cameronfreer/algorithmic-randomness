@@ -128,13 +128,10 @@ private theorem gridCDF_le_cdfRat_le_succ (M : TreeMartingale) {q : ℚ≥0} {n 
     rw [UnitDyadic.coe_ofGrid]
     exact le_trans x.2 hhi
 
-/-- **The savings error bound.** Across one cell the cumulative function moves by at most the cell
-mass, which savings bounds uniformly. -/
-private theorem cdfRat_sub_gridCDF_le {M : TreeMartingale} (hs : M.SavingsProperty) {q : ℚ≥0}
-    {n j : ℕ} (hj : j < 2 ^ n) (hlo : gridPoint n j ≤ ((q : ℚ) : ℝ))
-    (hhi : ((q : ℚ) : ℝ) ≤ gridPoint n (j + 1)) :
-    |cdfRat M q - ((gridCDF M n j : ℚ≥0) : ℝ)| ≤ ((cellBound M n : ℚ≥0) : ℝ) := by
-  obtain ⟨h1, h2⟩ := gridCDF_le_cdfRat_le_succ M hj hlo hhi
+/-- The successor step at a cut point, with its cell named. -/
+private theorem gridCDF_succ_index (M : TreeMartingale) {n j : ℕ} (hj : j < 2 ^ n) :
+    gridCDF M n (j + 1)
+      = gridCDF M n j + (2⁻¹ : ℚ≥0) ^ n * M.capital ((BitString.wordsOfLength n).getD j []) := by
   have hlt : j < (BitString.wordsOfLength n).length := by
     rw [BitString.length_wordsOfLength]; exact hj
   have hmem : (BitString.wordsOfLength n).getD j [] ∈ BitString.wordsOfLength n := by
@@ -145,20 +142,198 @@ private theorem cdfRat_sub_gridCDF_le {M : TreeMartingale} (hs : M.SavingsProper
   have hidx : gridIndex ((BitString.wordsOfLength n).getD j []) = j :=
     gridIndex_getD_wordsOfLength hj
   have hsucc := gridCDF_succ M ((BitString.wordsOfLength n).getD j [])
-  rw [hlen, hidx] at hsucc
+  rwa [hlen, hidx] at hsucc
+
+/-- One cell moves the grid value by at most the cell bound. -/
+private theorem gridCDF_succ_le {M : TreeMartingale} (hs : M.SavingsProperty) {n j : ℕ}
+    (hj : j < 2 ^ n) : gridCDF M n (j + 1) ≤ gridCDF M n j + cellBound M n := by
+  have hlt : j < (BitString.wordsOfLength n).length := by
+    rw [BitString.length_wordsOfLength]; exact hj
+  have hmem : (BitString.wordsOfLength n).getD j [] ∈ BitString.wordsOfLength n := by
+    rw [List.getD_eq_getElem _ _ hlt]
+    exact List.getElem_mem _
+  have hlen : ((BitString.wordsOfLength n).getD j []).length = n :=
+    BitString.length_of_mem_wordsOfLength hmem
   have hcell := cellMass_le hs ((BitString.wordsOfLength n).getD j [])
   rw [hlen] at hcell
-  have hcellR : (((2⁻¹ : ℚ≥0) ^ n * M.capital ((BitString.wordsOfLength n).getD j []) : ℚ≥0) : ℝ)
-      ≤ ((cellBound M n : ℚ≥0) : ℝ) := by exact_mod_cast hcell
-  have hsuccR : ((gridCDF M n (j + 1) : ℚ≥0) : ℝ)
-      = ((gridCDF M n j : ℚ≥0) : ℝ)
-        + (((2⁻¹ : ℚ≥0) ^ n * M.capital ((BitString.wordsOfLength n).getD j []) : ℚ≥0) : ℝ) := by
-    rw [hsucc]
-    push_cast
-    ring
+  rw [gridCDF_succ_index M hj]
+  exact add_le_add le_rfl hcell
+
+/-- **The savings error bound.** Across one cell the cumulative function moves by at most the cell
+mass, which savings bounds uniformly. -/
+private theorem cdfRat_sub_gridCDF_le {M : TreeMartingale} (hs : M.SavingsProperty) {q : ℚ≥0}
+    {n j : ℕ} (hj : j < 2 ^ n) (hlo : gridPoint n j ≤ ((q : ℚ) : ℝ))
+    (hhi : ((q : ℚ) : ℝ) ≤ gridPoint n (j + 1)) :
+    |cdfRat M q - ((gridCDF M n j : ℚ≥0) : ℝ)| ≤ ((cellBound M n : ℚ≥0) : ℝ) := by
+  obtain ⟨h1, h2⟩ := gridCDF_le_cdfRat_le_succ M hj hlo hhi
+  have hstep : ((gridCDF M n (j + 1) : ℚ≥0) : ℝ)
+      ≤ ((gridCDF M n j : ℚ≥0) : ℝ) + ((cellBound M n : ℚ≥0) : ℝ) := by
+    have h := gridCDF_succ_le hs hj
+    exact_mod_cast h
   rw [abs_of_nonneg (by linarith)]
-  rw [hsuccR] at h2
   linarith
+
+/-! ## The extension to the unit interval
+
+`supExtend (cdfRat M)` is a supremum over rationals of a supremum over dyadics; it collapses to the
+supremum over dyadics, because a dyadic point below `x` is itself a rational below `x`. Turning a
+`UnitDyadic` witness into that rational is the one step that is mathematical rather than
+definitional, since the subtype stores only a real together with an existential grid name. -/
+
+private theorem exists_nnrat_coe_eq (d : UnitDyadic) : ∃ q : ℚ≥0, ((q : ℚ) : ℝ) = (d : ℝ) := by
+  obtain ⟨n, k, hk, hd⟩ := d.2
+  refine ⟨(k : ℚ≥0) / (2 ^ n : ℚ≥0), ?_⟩
+  rw [hd, gridPoint]
+  push_cast
+  ring
+
+theorem supExtend_cdfRat_eq (M : TreeMartingale) (x : Set.Icc (0 : ℝ) 1) :
+    supExtend (cdfRat M) x = ⨆ d : {d : UnitDyadic // (d : ℝ) ≤ (x : ℝ)}, dyadicCDF M d := by
+  haveI : Nonempty {d : UnitDyadic // (d : ℝ) ≤ (x : ℝ)} := by
+    refine ⟨⟨UnitDyadic.ofGrid 0 0 (by norm_num), ?_⟩⟩
+    rw [UnitDyadic.coe_ofGrid, gridPoint]
+    simp only [Nat.cast_zero, zero_div]
+    exact x.2.1
+  have hbdd : BddAbove
+      (Set.range fun d : {d : UnitDyadic // (d : ℝ) ≤ (x : ℝ)} ↦ dyadicCDF M d) := by
+    refine ⟨dyadicCDF M (UnitDyadic.ofGrid 0 1 (by norm_num)), ?_⟩
+    rintro _ ⟨d, rfl⟩
+    refine dyadicCDF_mono M ?_
+    rw [UnitDyadic.coe_ofGrid, gridPoint]
+    simpa using (UnitDyadic.mem_unit (d : UnitDyadic)).2
+  haveI := nonempty_supExtend_index x
+  refine le_antisymm (ciSup_le fun q ↦ ?_) (ciSup_le fun d ↦ ?_)
+  · haveI := nonempty_cdfIndex (q : ℚ≥0)
+    refine ciSup_le fun e ↦ le_ciSup_of_le hbdd ⟨(e : UnitDyadic), le_trans e.2 q.2⟩ le_rfl
+  · obtain ⟨q, hq⟩ := exists_nnrat_coe_eq (d : UnitDyadic)
+    refine le_ciSup_of_le (bddAbove_supExtend_index (monotone_cdfRat M) x)
+      ⟨q, by rw [hq]; exact d.2⟩ ?_
+    haveI := nonempty_cdfIndex q
+    exact le_ciSup_of_le (bddAbove_cdfIndex M q) ⟨(d : UnitDyadic), le_of_eq hq.symm⟩ le_rfl
+
+/-! ## The bracket at an arbitrary real, and the two-cell oscillation -/
+
+private theorem gridCDF_le_supExtend (M : TreeMartingale) {x : Set.Icc (0 : ℝ) 1} {n j : ℕ}
+    (hj : j ≤ 2 ^ n) (hlo : gridPoint n j ≤ (x : ℝ)) :
+    ((gridCDF M n j : ℚ≥0) : ℝ) ≤ supExtend (cdfRat M) x := by
+  rw [supExtend_cdfRat_eq, ← dyadicCDF_eq_gridCDF M hj]
+  haveI : Nonempty {d : UnitDyadic // (d : ℝ) ≤ (x : ℝ)} := ⟨⟨UnitDyadic.ofGrid n j hj, hlo⟩⟩
+  refine le_ciSup_of_le ?_ ⟨UnitDyadic.ofGrid n j hj, hlo⟩ le_rfl
+  refine ⟨dyadicCDF M (UnitDyadic.ofGrid 0 1 (by norm_num)), ?_⟩
+  rintro _ ⟨d, rfl⟩
+  refine dyadicCDF_mono M ?_
+  rw [UnitDyadic.coe_ofGrid, gridPoint]
+  simpa using (UnitDyadic.mem_unit (d : UnitDyadic)).2
+
+private theorem supExtend_le_gridCDF (M : TreeMartingale) {x : Set.Icc (0 : ℝ) 1} {n j : ℕ}
+    (hj : j ≤ 2 ^ n) (hhi : (x : ℝ) ≤ gridPoint n j) :
+    supExtend (cdfRat M) x ≤ ((gridCDF M n j : ℚ≥0) : ℝ) := by
+  rw [supExtend_cdfRat_eq, ← dyadicCDF_eq_gridCDF M hj]
+  haveI : Nonempty {d : UnitDyadic // (d : ℝ) ≤ (x : ℝ)} := by
+    refine ⟨⟨UnitDyadic.ofGrid 0 0 (by norm_num), ?_⟩⟩
+    rw [UnitDyadic.coe_ofGrid, gridPoint]
+    simp only [Nat.cast_zero, zero_div]
+    exact x.2.1
+  refine ciSup_le fun d ↦ dyadicCDF_mono M ?_
+  rw [UnitDyadic.coe_ofGrid]
+  exact le_trans d.2 hhi
+
+private theorem gridCDF_le_add_cellBound {M : TreeMartingale} (hs : M.SavingsProperty) (n j : ℕ) :
+    ∀ i : ℕ, j + i ≤ 2 ^ n →
+      gridCDF M n (j + i) ≤ gridCDF M n j + (i : ℚ≥0) * cellBound M n := by
+  intro i
+  induction i with
+  | zero => intro _; simp
+  | succ i ih =>
+    intro h
+    have hlt : j + i < 2 ^ n := by omega
+    calc gridCDF M n (j + (i + 1)) = gridCDF M n ((j + i) + 1) := by ring_nf
+      _ ≤ gridCDF M n (j + i) + cellBound M n := gridCDF_succ_le hs hlt
+      _ ≤ (gridCDF M n j + (i : ℚ≥0) * cellBound M n) + cellBound M n :=
+          add_le_add (ih (by omega)) le_rfl
+      _ = gridCDF M n j + ((i : ℚ≥0) + 1) * cellBound M n := by ring
+      _ = gridCDF M n j + ((i + 1 : ℕ) : ℚ≥0) * cellBound M n := by push_cast; ring
+
+/-- **Two-cell oscillation.** Points within one cell width have cumulative values within two cell
+masses: the two brackets share a cell or are adjacent. -/
+private theorem supExtend_cdfRat_oscillation {M : TreeMartingale} (hs : M.SavingsProperty) (n : ℕ)
+    {x y : Set.Icc (0 : ℝ) 1} (hd : (y : ℝ) - (x : ℝ) ≤ (2⁻¹ : ℝ) ^ n) :
+    supExtend (cdfRat M) y - supExtend (cdfRat M) x ≤ 2 * ((cellBound M n : ℚ≥0) : ℝ) := by
+  have hpow : (0 : ℝ) < 2 ^ n := by positivity
+  have hinv : (2⁻¹ : ℝ) ^ n = 1 / 2 ^ n := by rw [inv_pow, one_div]
+  set j : ℕ := ⌊(2 : ℝ) ^ n * (x : ℝ)⌋₊ with hjdef
+  have hx0 : (0 : ℝ) ≤ (2 : ℝ) ^ n * (x : ℝ) := by
+    have := x.2.1
+    positivity
+  have hjle : ((j : ℕ) : ℝ) ≤ (2 : ℝ) ^ n * (x : ℝ) := Nat.floor_le hx0
+  have hjlt : (2 : ℝ) ^ n * (x : ℝ) < ((j : ℕ) : ℝ) + 1 := Nat.lt_floor_add_one _
+  have hjbound : j ≤ 2 ^ n := by
+    have h : ((j : ℕ) : ℝ) ≤ ((2 ^ n : ℕ) : ℝ) := by
+      refine le_trans hjle ?_
+      push_cast
+      nlinarith [x.2.2, hpow]
+    exact_mod_cast h
+  set m : ℕ := min (j + 2) (2 ^ n) with hmdef
+  have hmle : m ≤ 2 ^ n := min_le_right _ _
+  have hjm : j ≤ m := by omega
+  have hgap : m - j ≤ 2 := by omega
+  have hlo : gridPoint n j ≤ (x : ℝ) := by
+    rw [gridPoint, div_le_iff₀ hpow]
+    linarith
+  have hhi : (y : ℝ) ≤ gridPoint n m := by
+    rcases le_or_gt (j + 2) (2 ^ n) with hcase | hcase
+    · have hm : m = j + 2 := by omega
+      rw [hm, gridPoint, le_div_iff₀ hpow]
+      push_cast
+      rw [hinv] at hd
+      have hx : (y : ℝ) ≤ (x : ℝ) + 1 / 2 ^ n := by linarith
+      have : (2 : ℝ) ^ n * ((x : ℝ) + 1 / 2 ^ n) = (2 : ℝ) ^ n * (x : ℝ) + 1 := by
+        field_simp
+      nlinarith [hjlt]
+    · have hm : m = 2 ^ n := by omega
+      rw [hm, gridPoint]
+      have : ((2 ^ n : ℕ) : ℝ) / 2 ^ n = 1 := by
+        push_cast
+        field_simp
+      rw [this]
+      exact y.2.2
+  have hgrid : gridCDF M n m ≤ gridCDF M n j + 2 * cellBound M n := by
+    have hi : j + (m - j) = m := by omega
+    have h := gridCDF_le_add_cellBound hs n j (m - j) (by omega)
+    rw [hi] at h
+    refine le_trans h (add_le_add le_rfl ?_)
+    refine mul_le_mul_of_nonneg_right ?_ zero_le
+    exact_mod_cast hgap
+  have h1 := gridCDF_le_supExtend M hjbound hlo
+  have h2 := supExtend_le_gridCDF M hmle hhi
+  have h3 : ((gridCDF M n m : ℚ≥0) : ℝ)
+      ≤ ((gridCDF M n j : ℚ≥0) : ℝ) + 2 * ((cellBound M n : ℚ≥0) : ℝ) := by
+    exact_mod_cast hgrid
+  linarith
+
+/-- **Continuity.** The cell bound is a modulus: it tends to zero and controls the oscillation
+across one cell width. -/
+theorem continuous_supExtend_cdfRat {M : TreeMartingale} (hs : M.SavingsProperty) :
+    Continuous (supExtend (cdfRat M)) := by
+  rw [Metric.continuous_iff]
+  intro b ε hε
+  obtain ⟨n, hn⟩ := ((tendsto_coe_cellBound_zero M).eventually
+    (gt_mem_nhds (show (0 : ℝ) < ε / 2 by positivity))).exists
+  refine ⟨(2⁻¹ : ℝ) ^ n, by positivity, fun a hab ↦ ?_⟩
+  rw [Subtype.dist_eq, Real.dist_eq] at hab
+  rw [Real.dist_eq, abs_lt]
+  have hosc : ∀ u v : Set.Icc (0 : ℝ) 1, (u : ℝ) ≤ (v : ℝ) → (v : ℝ) - (u : ℝ) ≤ (2⁻¹ : ℝ) ^ n →
+      supExtend (cdfRat M) v - supExtend (cdfRat M) u < ε := fun u v _ hd ↦ by
+    have := supExtend_cdfRat_oscillation hs n hd
+    linarith
+  have hmono := monotone_supExtend (monotone_cdfRat M)
+  rcases le_total (a : ℝ) (b : ℝ) with hab' | hab'
+  · have h1 : supExtend (cdfRat M) a ≤ supExtend (cdfRat M) b := hmono hab'
+    have h2 := hosc a b hab' (by rw [abs_sub_comm, abs_of_nonneg (by linarith)] at hab; linarith)
+    constructor <;> linarith
+  · have h1 : supExtend (cdfRat M) b ≤ supExtend (cdfRat M) a := hmono hab'
+    have h2 := hosc b a hab' (by rw [abs_of_nonneg (by linarith)] at hab; linarith)
+    constructor <;> linarith
 
 /-! ## The coded cell bound and the level search -/
 
@@ -305,6 +480,35 @@ theorem cdfApprox_spec (hs : M.toTreeMartingale.SavingsProperty) (q k : ℕ) :
       linarith
     rw [cdfRat_gridPoint M.toTreeMartingale hjle hc_eq, sub_self, abs_zero]
     positivity
+
+/-! ## The bundle
+
+Everything the presentation needs is now available: the extension is monotone by inclusion of
+index families, continuous by the cell bound, and approximated at every rational by the coded
+program. -/
+
+/-- **The savings CDF.** A computable martingale with savings has a computable nondecreasing
+cumulative function. -/
+noncomputable def toComputableMonotoneCDF (hs : M.toTreeMartingale.SavingsProperty) :
+    ComputableMonotone :=
+  ofRationalValues (cdfRat M.toTreeMartingale) (monotone_cdfRat _)
+    (continuous_supExtend_cdfRat hs) (NatFunctionCode.ofComputable M.computable_cdfApproxFun)
+    fun q k ↦ by
+      rw [NatFunctionCode.apply₂, NatFunctionCode.ofComputable_toFun]
+      exact M.cdfApprox_spec hs q k
+
+@[simp] theorem toComputableMonotoneCDF_unitFun (hs : M.toTreeMartingale.SavingsProperty) :
+    (M.toComputableMonotoneCDF hs).unitFun = supExtend (cdfRat M.toTreeMartingale) := rfl
+
+/-- **Agreement at the cut points.** The bundled function is the cumulative sum exactly, which is
+what the slope estimates consume. -/
+theorem toComputableMonotoneCDF_gridPoint (hs : M.toTreeMartingale.SavingsProperty) {n j : ℕ}
+    (hj : j ≤ 2 ^ n) :
+    (M.toComputableMonotoneCDF hs).toFun (gridPoint n j)
+      = ((gridCDF M.toTreeMartingale n j : ℚ≥0) : ℝ) := by
+  rw [ComputableMonotone.toFun_of_mem _ (gridPoint_mem_unit hj), toComputableMonotoneCDF_unitFun]
+  exact le_antisymm (supExtend_le_gridCDF _ hj (le_refl _))
+    (gridCDF_le_supExtend _ hj (le_refl _))
 
 end ComputableMartingale
 

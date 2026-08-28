@@ -129,7 +129,9 @@ noncomputable def supExtend (v : ℚ≥0 → ℝ) (x : Set.Icc (0 : ℝ) 1) : �
 
 variable {v : ℚ≥0 → ℝ}
 
-private theorem nonempty_index (x : Set.Icc (0 : ℝ) 1) :
+/-- The index family is nonempty and bounded: both are needed by anyone reasoning about the
+extension, so they are public. -/
+theorem nonempty_supExtend_index (x : Set.Icc (0 : ℝ) 1) :
     Nonempty {q : ℚ≥0 // ((q : ℚ) : ℝ) ≤ (x : ℝ)} :=
   ⟨⟨0, by simpa using x.2.1⟩⟩
 
@@ -139,7 +141,7 @@ private theorem le_one_of_index (hv : Monotone v) {x : Set.Icc (0 : ℝ) 1}
   have h : ((q : ℚ≥0) : ℝ) ≤ 1 := le_trans q.2 x.2.2
   exact_mod_cast h
 
-private theorem bddAbove_index (hv : Monotone v) (x : Set.Icc (0 : ℝ) 1) :
+theorem bddAbove_supExtend_index (hv : Monotone v) (x : Set.Icc (0 : ℝ) 1) :
     BddAbove (Set.range fun q : {q : ℚ≥0 // ((q : ℚ) : ℝ) ≤ (x : ℝ)} ↦ v (q : ℚ≥0)) := by
   refine ⟨v 1, ?_⟩
   rintro _ ⟨q, rfl⟩
@@ -147,17 +149,17 @@ private theorem bddAbove_index (hv : Monotone v) (x : Set.Icc (0 : ℝ) 1) :
 
 theorem monotone_supExtend (hv : Monotone v) : Monotone (supExtend v) := by
   intro x y hxy
-  haveI := nonempty_index x
+  haveI := nonempty_supExtend_index x
   refine ciSup_le fun q ↦ ?_
-  haveI := nonempty_index y
-  exact le_ciSup_of_le (bddAbove_index hv y) ⟨(q : ℚ≥0), le_trans q.2 hxy⟩ le_rfl
+  haveI := nonempty_supExtend_index y
+  exact le_ciSup_of_le (bddAbove_supExtend_index hv y) ⟨(q : ℚ≥0), le_trans q.2 hxy⟩ le_rfl
 
 /-- Agreement at rational arguments, with no continuity hypothesis. -/
 theorem supExtend_rat (hv : Monotone v) (q : ℚ≥0) (hq : ((q : ℚ) : ℝ) ∈ Set.Icc (0 : ℝ) 1) :
     supExtend v ⟨((q : ℚ) : ℝ), hq⟩ = v q := by
-  haveI := nonempty_index (⟨((q : ℚ) : ℝ), hq⟩ : Set.Icc (0 : ℝ) 1)
-  refine le_antisymm (ciSup_le fun p ↦ hv ?_) (le_ciSup_of_le (bddAbove_index hv _) ⟨q, le_rfl⟩
-    le_rfl)
+  haveI := nonempty_supExtend_index (⟨((q : ℚ) : ℝ), hq⟩ : Set.Icc (0 : ℝ) 1)
+  refine le_antisymm (ciSup_le fun p ↦ hv ?_)
+    (le_ciSup_of_le (bddAbove_supExtend_index hv _) ⟨q, le_rfl⟩ le_rfl)
   have h : ((p : ℚ≥0) : ℝ) ≤ ((q : ℚ≥0) : ℝ) := p.2
   exact_mod_cast h
 
