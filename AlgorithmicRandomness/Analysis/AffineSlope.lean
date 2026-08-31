@@ -327,4 +327,32 @@ theorem affineSlope_le_affineSlopeComputable (σ : BitString) :
       ≤ (((affineSlopeComputable g G).capital σ : ℚ≥0) : ℝ) :=
   (affineSlopeApproximable g G).simulate_ge σ
 
+/-! ## The bounded form
+
+What the geometry downstream consumes is not success but its contrapositive: along a computably
+random point the chord slopes over the grid's cells are bounded. -/
+
+private theorem succeeds_of_unbounded_affineSlope {x : Cantor}
+    (h : ∀ C : ℝ, ∃ n, C < slope g.toFun (G.left (initSeg x n)) (G.right (initSeg x n))) :
+    (affineSlopeComputable g G).Succeeds x := by
+  intro c
+  obtain ⟨n, hn⟩ := h ((c : ℚ≥0) : ℝ)
+  refine ⟨n, ?_⟩
+  have hdom := affineSlope_le_affineSlopeComputable g G (initSeg x n)
+  rw [coe_affineSlope] at hdom
+  have : ((c : ℚ≥0) : ℝ) ≤ (((affineSlopeComputable g G).capital (initSeg x n) : ℚ≥0) : ℝ) := by
+    linarith
+  exact_mod_cast this
+
+/-- **Bounded slopes along a computably random point.** -/
+theorem IsComputablyRandom.affineSlope_bounded {x : Cantor} (hx : IsComputablyRandom x)
+    (g : ComputableMonotone) (G : AffineDyadicGrid) :
+    ∃ C : ℝ, ∀ n, slope g.toFun (G.left (initSeg x n)) (G.right (initSeg x n)) ≤ C := by
+  by_contra hcon
+  have h : ∀ C : ℝ, ∃ n, C < slope g.toFun (G.left (initSeg x n)) (G.right (initSeg x n)) := by
+    intro C
+    by_contra hC
+    exact hcon ⟨C, fun n ↦ not_lt.mp fun hlt ↦ hC ⟨n, hlt⟩⟩
+  exact hx (affineSlopeComputable g G) (succeeds_of_unbounded_affineSlope g G h)
+
 end AlgorithmicRandomness
