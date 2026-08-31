@@ -220,4 +220,98 @@ theorem IsComputablyRandomReal.ne_rat {z : ℝ} (h : IsComputablyRandomReal z) (
 theorem not_isComputablyRandomReal_rat (r : ℚ) : ¬IsComputablyRandomReal (r : ℝ) :=
   fun h ↦ h.ne_rat r rfl
 
+/-! ## Bit changes along a non-rational expansion
+
+A point whose value is not rational cannot have an eventually constant expansion, so its bits
+change infinitely often; and at a change the point sits in the middle half of the cell it is in.
+Both are what the affine geometry consumes: the changed bits are `n` and `n + 1`, while the
+containing cell is `initSeg x n`. -/
+
+private theorem eq_of_no_bit_change {x : Cantor} {N : ℕ} (h : ∀ n, N ≤ n → x n = x (n + 1)) :
+    ∀ n, N ≤ n → x n = x N := by
+  refine Nat.le_induction rfl ?_
+  intro n hn ih
+  rw [← h n hn, ih]
+
+private theorem dyadicLeft_initSeg_eq_of_false {x : Cantor} {N : ℕ}
+    (hb : ∀ n, N ≤ n → x n = false) :
+    ∀ m, N ≤ m → dyadicLeft (initSeg x m) = dyadicLeft (initSeg x N) := by
+  refine Nat.le_induction rfl ?_
+  intro m hm ih
+  rw [initSeg_succ, hb m hm, dyadicLeft_append_false, ih]
+
+private theorem dyadicRight_initSeg_eq_of_true {x : Cantor} {N : ℕ}
+    (hb : ∀ n, N ≤ n → x n = true) :
+    ∀ m, N ≤ m → dyadicRight (initSeg x m) = dyadicRight (initSeg x N) := by
+  refine Nat.le_induction rfl ?_
+  intro m hm ih
+  rw [initSeg_succ, hb m hm, dyadicRight_append_true, ih]
+
+private theorem exists_rat_dyadicLeft (σ : BitString) : ∃ r : ℚ, dyadicLeft σ = (r : ℝ) := by
+  refine ⟨(gridIndex σ : ℚ) / 2 ^ σ.length, ?_⟩
+  rw [dyadicLeft_eq_gridPoint, gridPoint]
+  push_cast
+  ring
+
+private theorem exists_rat_dyadicRight (σ : BitString) : ∃ r : ℚ, dyadicRight σ = (r : ℝ) := by
+  refine ⟨((gridIndex σ : ℚ) + 1) / 2 ^ σ.length, ?_⟩
+  rw [dyadicRight_eq_gridPoint_succ, gridPoint]
+  push_cast
+  ring
+
+/-- **Bits change infinitely often.** -/
+theorem frequently_bit_change_of_ne_rat {x : Cantor} (h : ∀ r : ℚ, realOf x ≠ (r : ℝ)) (N : ℕ) :
+    ∃ n, N ≤ n ∧ x n ≠ x (n + 1) := by
+  by_contra hcon
+  have hstep : ∀ n, N ≤ n → x n = x (n + 1) := by
+    intro n hn
+    by_contra hne
+    exact hcon ⟨n, hn, hne⟩
+  have hconst := eq_of_no_bit_change hstep
+  cases hxN : x N with
+  | false =>
+    have hb : ∀ n, N ≤ n → x n = false := fun n hn ↦ by rw [hconst n hn, hxN]
+    have hmem : ∀ m, dyadicLeft (initSeg x N) ∈ dyadicInterval (initSeg x m) := by
+      intro m
+      rcases le_total N m with hm | hm
+      · rw [dyadicInterval, Set.mem_Icc, ← dyadicLeft_initSeg_eq_of_false hb m hm]
+        exact ⟨le_refl _, (dyadicLeft_lt_dyadicRight _).le⟩
+      · refine dyadicInterval_subset_of_prefix (initSeg_prefix_of_le hm) ?_
+        rw [dyadicInterval, Set.mem_Icc]
+        exact ⟨le_refl _, (dyadicLeft_lt_dyadicRight _).le⟩
+    obtain ⟨r, hr⟩ := exists_rat_dyadicLeft (initSeg x N)
+    exact h r (by rw [← eq_realOf_of_mem_all_dyadicInterval hmem, hr])
+  | true =>
+    have hb : ∀ n, N ≤ n → x n = true := fun n hn ↦ by rw [hconst n hn, hxN]
+    have hmem : ∀ m, dyadicRight (initSeg x N) ∈ dyadicInterval (initSeg x m) := by
+      intro m
+      rcases le_total N m with hm | hm
+      · rw [dyadicInterval, Set.mem_Icc, ← dyadicRight_initSeg_eq_of_true hb m hm]
+        exact ⟨(dyadicLeft_lt_dyadicRight _).le, le_refl _⟩
+      · refine dyadicInterval_subset_of_prefix (initSeg_prefix_of_le hm) ?_
+        rw [dyadicInterval, Set.mem_Icc]
+        exact ⟨(dyadicLeft_lt_dyadicRight _).le, le_refl _⟩
+    obtain ⟨r, hr⟩ := exists_rat_dyadicRight (initSeg x N)
+    exact h r (by rw [← eq_realOf_of_mem_all_dyadicInterval hmem, hr])
+
+/-- **The middle half.** At a bit change the point is a quarter-width away from both ends of its
+cell. -/
+theorem realOf_mem_middle_half_of_bit_change {x : Cantor} {n : ℕ} (h : x n ≠ x (n + 1)) :
+    dyadicLeft (initSeg x n) + dyadicWidth (initSeg x n) / 4 ≤ realOf x ∧
+      realOf x ≤ dyadicRight (initSeg x n) - dyadicWidth (initSeg x n) / 4 := by
+  have hmem := realOf_mem_dyadicInterval x (n + 2)
+  rw [dyadicInterval, Set.mem_Icc] at hmem
+  have hstep : initSeg x (n + 2) = (initSeg x n ++ [x n]) ++ [x (n + 1)] := by
+    rw [initSeg_succ, initSeg_succ]
+  have hwpos := dyadicWidth_pos (initSeg x n)
+  rw [hstep, dyadicRight] at hmem
+  simp only [dyadicLeft_append, dyadicWidth_append] at hmem
+  rw [dyadicRight]
+  cases hb : x n <;> cases hb' : x (n + 1) <;> rw [hb, hb'] at hmem <;>
+    simp only [Bool.false_eq_true, if_false, if_true] at hmem
+  · exact absurd (by rw [hb, hb']) h
+  · constructor <;> linarith [hmem.1, hmem.2]
+  · constructor <;> linarith [hmem.1, hmem.2]
+  · exact absurd (by rw [hb, hb']) h
+
 end AlgorithmicRandomness
