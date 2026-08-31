@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.CDFProgram
+import Mathlib.LinearAlgebra.AffineSpace.Slope
 import AlgorithmicRandomness.Analysis.ComputableMonotone
 import AlgorithmicRandomness.Martingale.Savings
 import Mathlib.Analysis.SpecificLimits.Normed
@@ -509,6 +510,21 @@ theorem toComputableMonotoneCDF_gridPoint (hs : M.toTreeMartingale.SavingsProper
   rw [ComputableMonotone.toFun_of_mem _ (gridPoint_mem_unit hj), toComputableMonotoneCDF_unitFun]
   exact le_antisymm (supExtend_le_gridCDF _ hj (le_refl _))
     (gridCDF_le_supExtend _ hj (le_refl _))
+
+/-- **The mathematical contract.** The chord slope of the cumulative function across a dyadic cell
+is the capital there, exactly. -/
+theorem toComputableMonotoneCDF_slope (hs : M.toTreeMartingale.SavingsProperty) (σ : BitString) :
+    slope (M.toComputableMonotoneCDF hs).toFun (dyadicLeft σ) (dyadicRight σ)
+      = ((M.capital σ : ℚ≥0) : ℝ) := by
+  have hidx : gridIndex σ < 2 ^ σ.length := gridIndex_lt_two_pow σ
+  have hleft : (M.toComputableMonotoneCDF hs).toFun (dyadicLeft σ)
+      = ((gridCDF M.toTreeMartingale σ.length (gridIndex σ) : ℚ≥0) : ℝ) := by
+    rw [dyadicLeft_eq_gridPoint, M.toComputableMonotoneCDF_gridPoint hs hidx.le]
+  have hright : (M.toComputableMonotoneCDF hs).toFun (dyadicRight σ)
+      = ((gridCDF M.toTreeMartingale σ.length (gridIndex σ + 1) : ℚ≥0) : ℝ) := by
+    rw [dyadicRight_eq_gridPoint_succ, M.toComputableMonotoneCDF_gridPoint hs hidx]
+  rw [slope_def_field, hleft, hright, ← cdfLeft_eq_gridCDF, ← cdfRight_eq_gridCDF]
+  exact cdf_slope M.toTreeMartingale σ
 
 end ComputableMartingale
 

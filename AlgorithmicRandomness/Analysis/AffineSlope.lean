@@ -5,6 +5,8 @@ Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.AffineDyadic
 import AlgorithmicRandomness.Analysis.ComputableMonotone
+import AlgorithmicRandomness.Analysis.RationalExpansion
+import AlgorithmicRandomness.Analysis.SavingsCDF
 import AlgorithmicRandomness.Martingale.Simulate
 
 /-!
@@ -354,5 +356,101 @@ theorem IsComputablyRandom.affineSlope_bounded {x : Cantor} (hx : IsComputablyRa
     by_contra hC
     exact hcon ⟨C, fun n ↦ not_lt.mp fun hlt ↦ hC ⟨n, hlt⟩⟩
   exact hx (affineSlopeComputable g G) (succeeds_of_unbounded_affineSlope g G h)
+
+/-! ## The geometric core
+
+A bit change puts the source point in the middle half of its cell, hence its image in the middle
+half of the affine cell; a dyadic cell of the image, taken `r` levels finer, is then small enough
+to fit inside. The offset `r` is fixed once by `2⁻ʳ ≤ scale / 4`, and the width ratio it produces
+is the constant carried into the slope bound. -/
+
+/-- The width identity. It is about lengths only, so the source point does not appear. -/
+theorem dyadicWidth_initSeg_add_eq_affineWidth (G : AffineDyadicGrid) (w : Cantor)
+    (σ : BitString) (r : ℕ) :
+    dyadicWidth (initSeg w (σ.length + r)) = ((2⁻¹ : ℝ) ^ r / G.scale) * G.width σ := by
+  have hscale : G.scale ≠ 0 := (G.zero_lt_scale).ne'
+  rw [dyadicWidth_initSeg, AffineDyadicGrid.width, dyadicWidth, pow_add]
+  field_simp
+
+/-- **Containment.** At a bit change, the level-`(n + r)` cell of the image lies inside the affine
+cell of the source. -/
+theorem dyadicInterval_subset_affineInterval_of_bit_change {G : AffineDyadicGrid} {w x : Cantor}
+    {n r : ℕ} (hrel : realOf w = G.scale * realOf x + G.shift)
+    (hr : (2⁻¹ : ℝ) ^ r ≤ G.scale / 4) (hchange : x n ≠ x (n + 1)) :
+    dyadicInterval (initSeg w (n + r)) ⊆ G.interval (initSeg x n) := by
+  obtain ⟨hmid1, hmid2⟩ := realOf_mem_middle_half_of_bit_change hchange
+  have hscale : 0 < G.scale := G.zero_lt_scale
+  have hu := realOf_mem_dyadicInterval w (n + r)
+  rw [dyadicInterval, Set.mem_Icc] at hu
+  have hwid : dyadicRight (initSeg w (n + r)) - dyadicLeft (initSeg w (n + r))
+      = (2⁻¹ : ℝ) ^ (n + r) := by
+    rw [dyadicRight, dyadicWidth_initSeg]
+    ring
+  have hsmall : (2⁻¹ : ℝ) ^ (n + r) ≤ G.scale * dyadicWidth (initSeg x n) / 4 := by
+    rw [pow_add, dyadicWidth_initSeg]
+    calc (2⁻¹ : ℝ) ^ n * (2⁻¹ : ℝ) ^ r ≤ (2⁻¹ : ℝ) ^ n * (G.scale / 4) := by
+          have : (0 : ℝ) < (2⁻¹ : ℝ) ^ n := by positivity
+          exact mul_le_mul_of_nonneg_left hr this.le
+      _ = G.scale * (2⁻¹ : ℝ) ^ n / 4 := by ring
+  have hlo : G.left (initSeg x n) + G.scale * dyadicWidth (initSeg x n) / 4 ≤ realOf w := by
+    rw [hrel, AffineDyadicGrid.left]
+    nlinarith [hmid1]
+  have hhi : realOf w ≤ G.right (initSeg x n) - G.scale * dyadicWidth (initSeg x n) / 4 := by
+    rw [hrel, AffineDyadicGrid.right, AffineDyadicGrid.left, AffineDyadicGrid.width, dyadicRight]
+      at *
+    nlinarith [hmid2]
+  intro z hz
+  rw [dyadicInterval, Set.mem_Icc] at hz
+  rw [AffineDyadicGrid.interval, Set.mem_Icc]
+  constructor <;> linarith [hz.1, hz.2, hu.1, hu.2]
+
+/-- **The scaled capital bound.** At a bit change, the capital of the source cell, scaled by the
+fixed width ratio, is below the affine slope. This is the lower bound unboundedness needs, with no
+later loss and no guessed constant. -/
+theorem scaled_capital_le_affineSlope {M : ComputableMartingale}
+    (hs : M.toTreeMartingale.SavingsProperty) {G : AffineDyadicGrid} {w x : Cantor} {n r : ℕ}
+    (hrel : realOf w = G.scale * realOf x + G.shift)
+    (hr : (2⁻¹ : ℝ) ^ r ≤ G.scale / 4) (hchange : x n ≠ x (n + 1)) :
+    ((2⁻¹ : ℝ) ^ r / G.scale) * ((M.capital (initSeg w (n + r)) : ℚ≥0) : ℝ)
+      ≤ ((affineSlope (M.toComputableMonotoneCDF hs) G (initSeg x n) : ℝ≥0) : ℝ) := by
+  have hscale : 0 < G.scale := G.zero_lt_scale
+  have hcpos : (0 : ℝ) < (2⁻¹ : ℝ) ^ r / G.scale := by positivity
+  have hWpos : (0 : ℝ) < G.width (initSeg x n) := G.width_pos (initSeg x n)
+  have hsub := dyadicInterval_subset_affineInterval_of_bit_change hrel hr hchange
+  have hends : G.left (initSeg x n) ≤ dyadicLeft (initSeg w (n + r)) ∧
+      dyadicRight (initSeg w (n + r)) ≤ G.right (initSeg x n) := by
+    have h1 := hsub (Set.left_mem_Icc.mpr (dyadicLeft_lt_dyadicRight _).le)
+    have h2 := hsub (Set.right_mem_Icc.mpr (dyadicLeft_lt_dyadicRight _).le)
+    rw [AffineDyadicGrid.interval, Set.mem_Icc] at h1 h2
+    exact ⟨h1.1, h2.2⟩
+  have hmono : (M.toComputableMonotoneCDF hs).toFun (dyadicRight (initSeg w (n + r)))
+      - (M.toComputableMonotoneCDF hs).toFun (dyadicLeft (initSeg w (n + r)))
+      ≤ (M.toComputableMonotoneCDF hs).toFun (G.right (initSeg x n))
+        - (M.toComputableMonotoneCDF hs).toFun (G.left (initSeg x n)) := by
+    have h1 := (M.toComputableMonotoneCDF hs).monotone_toFun hends.1
+    have h2 := (M.toComputableMonotoneCDF hs).monotone_toFun hends.2
+    linarith
+  have hwD : dyadicRight (initSeg w (n + r)) - dyadicLeft (initSeg w (n + r))
+      = ((2⁻¹ : ℝ) ^ r / G.scale) * G.width (initSeg x n) := by
+    have h := dyadicWidth_initSeg_add_eq_affineWidth G w (initSeg x n) r
+    rw [length_initSeg] at h
+    rw [dyadicRight, ← h]
+    ring
+  have hslope := M.toComputableMonotoneCDF_slope hs (initSeg w (n + r))
+  rw [slope_def_field, hwD] at hslope
+  rw [coe_affineSlope, slope_def_field, AffineDyadicGrid.right, ← hslope]
+  have hsimp : ((2⁻¹ : ℝ) ^ r / G.scale)
+      * (((M.toComputableMonotoneCDF hs).toFun (dyadicRight (initSeg w (n + r)))
+          - (M.toComputableMonotoneCDF hs).toFun (dyadicLeft (initSeg w (n + r))))
+        / (((2⁻¹ : ℝ) ^ r / G.scale) * G.width (initSeg x n)))
+      = ((M.toComputableMonotoneCDF hs).toFun (dyadicRight (initSeg w (n + r)))
+          - (M.toComputableMonotoneCDF hs).toFun (dyadicLeft (initSeg w (n + r))))
+        / G.width (initSeg x n) := by
+    field_simp
+  rw [hsimp]
+  have hden : G.left (initSeg x n) + G.width (initSeg x n) - G.left (initSeg x n)
+      = G.width (initSeg x n) := by ring
+  rw [hden]
+  exact div_le_div_of_nonneg_right hmono hWpos.le
 
 end AlgorithmicRandomness
