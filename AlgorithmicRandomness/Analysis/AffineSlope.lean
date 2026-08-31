@@ -505,4 +505,46 @@ theorem isComputablyRandomReal_of_affineGrid (G : AffineDyadicGrid) {z u : ℝ}
   rw [div_lt_iff₀ hcpos] at hlt
   linarith
 
+/-! ## The bare-rational form
+
+The grid's codes are *chosen*, not computed from `p` and `q`: nothing here receives those rationals
+dynamically, so surjectivity of the two value maps supplies genuine codes and no uniform
+transformer is needed. This is the same non-uniformity decision made for the martingale's Lipschitz
+cumulative function and for the computable-tree constructions. A coded inverse-grid constructor
+belongs here only once some executable program actually consumes `p` and `q` at run time. -/
+
+private noncomputable def inverseAffineGrid (p q : ℚ) (hp : 0 < p) (m : ℤ) : AffineDyadicGrid where
+  scaleCode := (NNRatCode.value_surjective (1 / p : ℚ).toNNRat).choose
+  shiftCode := (RatCode.value_surjective (-(q / p + m))).choose
+  scale_pos := by
+    rw [(NNRatCode.value_surjective (1 / p : ℚ).toNNRat).choose_spec]
+    have h : (0 : ℚ) < 1 / p := one_div_pos.mpr hp
+    have hc : (((1 / p : ℚ).toNNRat : ℚ≥0) : ℚ) = 1 / p := Rat.coe_toNNRat _ h.le
+    have h2 : (0 : ℚ) < (((1 / p : ℚ).toNNRat : ℚ≥0) : ℚ) := by rw [hc]; exact h
+    exact_mod_cast h2
+
+private theorem scale_inverseAffineGrid (p q : ℚ) (hp : 0 < p) (m : ℤ) :
+    (inverseAffineGrid p q hp m).scale = ((1 / p : ℚ) : ℝ) := by
+  rw [AffineDyadicGrid.scale, inverseAffineGrid,
+    (NNRatCode.value_surjective (1 / p : ℚ).toNNRat).choose_spec,
+    Rat.coe_toNNRat _ (one_div_pos.mpr hp).le]
+
+private theorem shift_inverseAffineGrid (p q : ℚ) (hp : 0 < p) (m : ℤ) :
+    (inverseAffineGrid p q hp m).shift = ((-(q / p + m) : ℚ) : ℝ) := by
+  rw [AffineDyadicGrid.shift, inverseAffineGrid,
+    (RatCode.value_surjective (-(q / p + m))).choose_spec]
+
+/-- **Affine preservation, in the form BMN states it.** -/
+theorem isComputablyRandomReal_of_affine {p q : ℚ} (hp : 0 < p) {m : ℤ} {z u : ℝ}
+    (hu : u ∈ Set.Icc (0 : ℝ) 1) (hzu : z = (p : ℝ) * (u + m) + q)
+    (hz : IsComputablyRandomReal z) : IsComputablyRandomReal u := by
+  refine isComputablyRandomReal_of_affineGrid (inverseAffineGrid p q hp m) hu ?_ hz
+  have hpR : (p : ℝ) ≠ 0 := by
+    have : (0 : ℝ) < (p : ℝ) := by exact_mod_cast hp
+    exact this.ne'
+  rw [scale_inverseAffineGrid, shift_inverseAffineGrid, hzu]
+  push_cast
+  field_simp
+  ring
+
 end AlgorithmicRandomness
