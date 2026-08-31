@@ -453,4 +453,56 @@ theorem scaled_capital_le_affineSlope {M : ComputableMartingale}
   rw [hden]
   exact div_le_div_of_nonneg_right hmono hWpos.le
 
+/-! ## Affine preservation of computable randomness
+
+The narrow endpoint BMN consumes. No uniqueness of expansions is needed: `IsComputablyRandomReal`
+is existential, so *any* expansion of the image may be chosen, and every expansion of it satisfies
+the affine relation. Non-rationality is consumed once, for the bit changes of the source
+expansion. -/
+
+theorem isComputablyRandomReal_of_affineGrid (G : AffineDyadicGrid) {z u : ℝ}
+    (hu : u ∈ Set.Icc (0 : ℝ) 1) (hrel : u = G.scale * z + G.shift)
+    (hz : IsComputablyRandomReal z) : IsComputablyRandomReal u := by
+  have hznr : ∀ r : ℚ, z ≠ (r : ℝ) := hz.ne_rat
+  obtain ⟨x, hxz, hxrand⟩ := hz
+  obtain ⟨w, hwu⟩ := exists_realOf_eq hu
+  refine ⟨w, hwu, ?_⟩
+  by_contra hwnr
+  obtain ⟨M, hM⟩ : ∃ d : ComputableMartingale, d.Succeeds w := by
+    by_contra hno
+    exact hwnr fun d hd ↦ hno ⟨d, hd⟩
+  have hrel' : realOf w = G.scale * realOf x + G.shift := by rw [hwu, hxz]; exact hrel
+  have hxnr : ∀ r : ℚ, realOf x ≠ (r : ℝ) := by rw [hxz]; exact hznr
+  -- normalize, and take the cumulative function of the normalized martingale
+  set S := M.withSavings with hS
+  have hSsucc : S.toTreeMartingale.Succeeds w := M.succeeds_withSavings hM
+  set g := S.toComputableMartingale.toComputableMonotoneCDF S.savingsProperty with hg
+  obtain ⟨C, hC⟩ := hxrand.affineSlope_bounded g G
+  -- the fixed offset and its ratio
+  obtain ⟨r, hr⟩ : ∃ r : ℕ, (2⁻¹ : ℝ) ^ r ≤ G.scale / 4 := by
+    obtain ⟨r, hrr⟩ := exists_pow_lt_of_lt_one (show (0 : ℝ) < G.scale / 4 by
+      have := G.zero_lt_scale; positivity) (show (2⁻¹ : ℝ) < 1 by norm_num)
+    exact ⟨r, hrr.le⟩
+  have hcpos : (0 : ℝ) < (2⁻¹ : ℝ) ^ r / G.scale := by
+    have := G.zero_lt_scale
+    positivity
+  -- savings makes the capital diverge, so it eventually passes the bound
+  obtain ⟨k, hk⟩ := exists_nat_gt (C / ((2⁻¹ : ℝ) ^ r / G.scale))
+  have htend := hSsucc.tendsto_atTop_of_savings S.savingsProperty
+  obtain ⟨N, hN⟩ := Filter.eventually_atTop.mp (htend.eventually_ge_atTop ((k : ℚ≥0)))
+  -- a late bit change
+  obtain ⟨n, hn, hchange⟩ := frequently_bit_change_of_ne_rat hxnr N
+  -- the chain
+  have h1 : ((k : ℕ) : ℝ) ≤ ((S.capital (initSeg w (n + r)) : ℚ≥0) : ℝ) := by
+    have := hN (n + r) (by omega)
+    exact_mod_cast this
+  have h2 := scaled_capital_le_affineSlope (M := S.toComputableMartingale) S.savingsProperty
+    hrel' hr hchange
+  have h3 := hC n
+  rw [← coe_affineSlope g G (initSeg x n)] at h3
+  have hlt : C / ((2⁻¹ : ℝ) ^ r / G.scale) < ((S.capital (initSeg w (n + r)) : ℚ≥0) : ℝ) := by
+    linarith
+  rw [div_lt_iff₀ hcpos] at hlt
+  linarith
+
 end AlgorithmicRandomness
