@@ -242,6 +242,22 @@ theorem primrec_toNNRat : Primrec toNNRat := by
       (Primrec.nat_mul.comp (Primrec.succ.comp ha) (Primrec.succ.comp hb))
       (Primrec.const 1))
 
+/-- Division of a signed coded rational by a nonnegative one, correct when the divisor is
+positive. Both parts are divided, so the sign is carried without a case split. -/
+def divNNRat (m k : ℕ) : ℕ :=
+  Nat.pair (NNRatCode.div m.unpair.1 k) (NNRatCode.div m.unpair.2 k)
+
+theorem value_divNNRat {m k : ℕ} (hk : 0 < NNRatCode.value k) :
+    value (divNNRat m k) = value m / ((NNRatCode.value k : ℚ≥0) : ℚ) := by
+  rw [divNNRat, value_pair, NNRatCode.value_div hk, NNRatCode.value_div hk, value]
+  push_cast
+  ring
+
+theorem primrec_divNNRat : Primrec₂ divNNRat :=
+  Primrec₂.natPair.comp
+    (NNRatCode.primrec_div.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)) Primrec.snd)
+    (NNRatCode.primrec_div.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)) Primrec.snd)
+
 /-! ## Clamping into the unit interval
 
 The result is a *nonnegative* code: the clamp is nonnegative by construction, and both consumers —
