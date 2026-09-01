@@ -41,6 +41,7 @@ import AlgorithmicRandomness.Analysis.AffineDyadic
 import AlgorithmicRandomness.Analysis.RationalExpansion
 import AlgorithmicRandomness.Analysis.SavingsCDF
 import AlgorithmicRandomness.Analysis.AffineSlope
+import AlgorithmicRandomness.Analysis.InfiniteUpperDerivative
 import AlgorithmicRandomness.Complexity.PrefixMachine
 import AlgorithmicRandomness.Complexity.Universal
 import AlgorithmicRandomness.Complexity.PrefixComplexity

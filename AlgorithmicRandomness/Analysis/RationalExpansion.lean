@@ -314,4 +314,37 @@ theorem realOf_mem_middle_half_of_bit_change {x : Cantor} {n : ℕ} (h : x n ≠
   · constructor <;> linarith [hmem.1, hmem.2]
   · exact absurd (by rw [hb, hb']) h
 
+/-! ## Identifying a prefix from an interval
+
+A non-rational point lies in the interior of every dyadic interval containing it, so the interval's
+name *is* the point's prefix. Adjacent closed dyadic intervals share an endpoint, and that shared
+endpoint is the only obstruction; non-rationality removes it. -/
+
+theorem initSeg_eq_of_mem_dyadicInterval_of_ne_rat {x : Cantor} {σ : BitString}
+    (hx : realOf x ∈ dyadicInterval σ) (hirr : ∀ q : ℚ, realOf x ≠ (q : ℝ)) :
+    initSeg x σ.length = σ := by
+  by_contra hne
+  have hτlen : (initSeg x σ.length).length = σ.length := length_initSeg x σ.length
+  have hxτ := realOf_mem_dyadicInterval x σ.length
+  rw [dyadicInterval, Set.mem_Icc, dyadicLeft_eq_gridPoint, dyadicRight_eq_gridPoint_succ,
+    hτlen] at hxτ
+  rw [dyadicInterval, Set.mem_Icc, dyadicLeft_eq_gridPoint, dyadicRight_eq_gridPoint_succ] at hx
+  have hidx : gridIndex (initSeg x σ.length) ≠ gridIndex σ := fun h ↦
+    hne (gridIndex_inj_of_length hτlen h)
+  have hrat : ∀ m : ℕ, ∃ q : ℚ, gridPoint σ.length m = (q : ℝ) := by
+    intro m
+    refine ⟨(m : ℚ) / 2 ^ σ.length, ?_⟩
+    rw [gridPoint]
+    push_cast
+    ring
+  rcases lt_or_gt_of_ne hidx with hlt | hlt
+  · have hle : gridPoint σ.length (gridIndex (initSeg x σ.length) + 1)
+        ≤ gridPoint σ.length (gridIndex σ) := gridPoint_le_iff.mpr hlt
+    obtain ⟨q, hq⟩ := hrat (gridIndex (initSeg x σ.length) + 1)
+    exact hirr q (by rw [← hq]; linarith [hx.1, hxτ.2])
+  · have hle : gridPoint σ.length (gridIndex σ + 1)
+        ≤ gridPoint σ.length (gridIndex (initSeg x σ.length)) := gridPoint_le_iff.mpr hlt
+    obtain ⟨q, hq⟩ := hrat (gridIndex σ + 1)
+    exact hirr q (by rw [← hq]; linarith [hx.2, hxτ.1])
+
 end AlgorithmicRandomness
