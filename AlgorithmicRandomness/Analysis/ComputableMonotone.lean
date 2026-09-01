@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.Lipschitz
+import Mathlib.LinearAlgebra.AffineSpace.Slope
 
 /-!
 # Computable nondecreasing functions
@@ -182,6 +183,89 @@ noncomputable def ofRationalValues (v : ℚ≥0 → ℝ) (hv : Monotone v)
 @[simp] theorem ofRationalValues_unitFun (v : ℚ≥0 → ℝ) (hv : Monotone v)
     (hcont : Continuous (supExtend v)) (code : NatFunctionCode) (hcode : _) :
     (ofRationalValues v hv hcont code hcode).unitFun = supExtend v := rfl
+
+/-! ## Strictification
+
+Adding the identity makes a nondecreasing function strictly increasing, with the quantitative form
+`b - a ≤ F b - F a` that an interpolation proportional to the source needs as a denominator bound.
+Differentiability is unaffected in the interior, since the two functions differ there by a linear
+term. -/
+
+namespace ComputableMonotone
+
+variable (f : ComputableMonotone)
+
+/-- The approximation program of `f + id`: the argument is exact, so only `f`'s error survives. -/
+noncomputable def addIdentityFun (w : ℕ) : ℕ :=
+  RatCode.add (f.approxAtCode w.unpair.1 w.unpair.2)
+    (RatCode.ofNNRat (RatCode.clampUnit w.unpair.1))
+
+theorem computable_addIdentityFun : Computable f.addIdentityFun := by
+  have hq : Computable fun w : ℕ ↦ w.unpair.1 := (Primrec.fst.comp Primrec.unpair).to_comp
+  have hk : Computable fun w : ℕ ↦ w.unpair.2 := (Primrec.snd.comp Primrec.unpair).to_comp
+  have hf := Computable₂.comp f.computable_approxAtCode hq hk
+  have hc := Computable₂.comp RatCode.primrec_add.to_comp hf
+    ((RatCode.primrec_ofNNRat.comp
+      (RatCode.primrec_clampUnit.comp (Primrec.fst.comp Primrec.unpair))).to_comp)
+  exact hc.of_eq fun _ ↦ rfl
+
+/-- **Strictification.** -/
+noncomputable def addIdentity : ComputableMonotone where
+  unitFun x := f.unitFun x + (x : ℝ)
+  monotone_unitFun x y hxy := add_le_add (f.monotone_unitFun hxy) hxy
+  continuous_unitFun := f.continuous_unitFun.add continuous_subtype_val
+  approxCode := NatFunctionCode.ofComputable f.computable_addIdentityFun
+  approx_spec q k := by
+    rw [NatFunctionCode.apply₂, NatFunctionCode.ofComputable_toFun, addIdentityFun,
+      Nat.unpair_pair, RatCode.value_add, Rat.cast_add, RatCode.value_ofNNRat,
+      unitExtend_value_eq]
+    have hbase := f.approx_spec q k
+    rw [unitExtend_value_eq] at hbase
+    simpa [approxAtCode] using hbase
+
+@[simp] theorem addIdentity_unitFun (x : Set.Icc (0 : ℝ) 1) :
+    f.addIdentity.unitFun x = f.unitFun x + (x : ℝ) := rfl
+
+theorem strictMono_addIdentity : StrictMono f.addIdentity.unitFun := by
+  intro x y hxy
+  have hle : (x : ℝ) ≤ (y : ℝ) := le_of_lt hxy
+  have hlt : (x : ℝ) < (y : ℝ) := hxy
+  have := f.monotone_unitFun hle
+  rw [addIdentity_unitFun, addIdentity_unitFun]
+  linarith
+
+theorem toFun_addIdentity {x : ℝ} (hx : x ∈ Set.Icc (0 : ℝ) 1) :
+    f.addIdentity.toFun x = f.toFun x + x := by
+  rw [toFun_of_mem _ hx, toFun_of_mem _ hx, addIdentity_unitFun]
+
+/-- The quantitative form the interpolation needs. -/
+theorem sub_le_addIdentity_sub {a b : ℝ} (ha : a ∈ Set.Icc (0 : ℝ) 1)
+    (hb : b ∈ Set.Icc (0 : ℝ) 1) (hab : a ≤ b) :
+    b - a ≤ f.addIdentity.toFun b - f.addIdentity.toFun a := by
+  rw [toFun_addIdentity _ ha, toFun_addIdentity _ hb]
+  have := f.monotone_toFun hab
+  linarith
+
+theorem slope_addIdentity {a b : ℝ} (ha : a ∈ Set.Icc (0 : ℝ) 1) (hb : b ∈ Set.Icc (0 : ℝ) 1)
+    (hab : a ≠ b) : slope f.addIdentity.toFun a b = slope f.toFun a b + 1 := by
+  rw [slope_def_field, slope_def_field, toFun_addIdentity _ ha, toFun_addIdentity _ hb]
+  have hne : b - a ≠ 0 := sub_ne_zero.mpr (Ne.symm hab)
+  field_simp
+  ring
+
+theorem differentiableAt_addIdentity_iff {z : ℝ} (hz : z ∈ Set.Ioo (0 : ℝ) 1) :
+    DifferentiableAt ℝ f.addIdentity.toFun z ↔ DifferentiableAt ℝ f.toFun z := by
+  have hev : f.addIdentity.toFun =ᶠ[nhds z] fun x ↦ f.toFun x + x := by
+    refine Filter.eventuallyEq_of_mem (Ioo_mem_nhds hz.1 hz.2) fun x hx ↦ ?_
+    exact toFun_addIdentity f (Set.Ioo_subset_Icc_self hx)
+  rw [hev.differentiableAt_iff]
+  constructor
+  · intro h
+    simpa using h.sub differentiable_id.differentiableAt
+  · intro h
+    exact h.add differentiable_id.differentiableAt
+
+end ComputableMonotone
 
 /-! ## Lipschitz functions become monotone ones
 
