@@ -330,6 +330,83 @@ private theorem exists_grid_with_infinite_fiber (grids : Finset AffineDyadicGrid
     exact congrArg Subtype.val hpick
   simpa [heq] using hP n
 
+/-! ## Threshold arithmetic
+
+Three selections, each independent of the geometry: a covering ratio close enough to one, two
+thresholds strictly inside the resulting gap, and a precision whose margin preserves all three
+strict inequalities. -/
+
+private theorem exists_coverRatio {low high : ℚ≥0} (h : low < high) :
+    ∃ α : ℚ, 1 < α ∧ α < 4 / 3 ∧
+      (α : ℝ) * ((low : ℚ≥0) : ℝ) < ((high : ℚ≥0) : ℝ) / (α : ℝ) := by
+  have hlq : ((low : ℚ≥0) : ℚ) < ((high : ℚ≥0) : ℚ) := by exact_mod_cast h
+  have hhpos : (0 : ℚ) < ((high : ℚ≥0) : ℚ) := lt_of_le_of_lt (by positivity) hlq
+  rcases eq_or_lt_of_le (show (0 : ℚ) ≤ ((low : ℚ≥0) : ℚ) by positivity) with hlow | hlow
+  · refine ⟨7 / 6, by norm_num, by norm_num, ?_⟩
+    have hl0 : ((low : ℚ≥0) : ℝ) = 0 := by exact_mod_cast hlow.symm
+    have hh0 : (0 : ℝ) < ((high : ℚ≥0) : ℝ) := by exact_mod_cast hhpos
+    rw [hl0, mul_zero]
+    positivity
+  · set l : ℚ := ((low : ℚ≥0) : ℚ) with hl
+    set hh : ℚ := ((high : ℚ≥0) : ℚ) with hhdef
+    set s : ℚ := hh / l - 1 with hs
+    have hspos : 0 < s := by
+      rw [hs, sub_pos, lt_div_iff₀ hlow]
+      linarith
+    set t : ℚ := min (1 / 6) (s / 4) with ht
+    have htpos : 0 < t := lt_min (by norm_num) (by linarith)
+    have ht6 : t ≤ 1 / 6 := min_le_left _ _
+    have hts : t ≤ s / 4 := min_le_right _ _
+    have hsl : s * l = hh - l := by
+      rw [hs]
+      field_simp
+    have htt : t * t ≤ (1 / 6) * (s / 4) := mul_le_mul ht6 hts htpos.le (by norm_num)
+    have hkey2 : 2 * t + t * t < s := by linarith
+    have hmul : (2 * t + t * t) * l < s * l := mul_lt_mul_of_pos_right hkey2 hlow
+    have hkey : (1 + t) * (1 + t) * l < hh := by nlinarith [hmul, hsl]
+    refine ⟨1 + t, by linarith, by linarith, ?_⟩
+    have hαpos : (0 : ℝ) < ((1 + t : ℚ) : ℝ) := by
+      have : (0 : ℚ) < 1 + t := by linarith
+      exact_mod_cast this
+    rw [lt_div_iff₀ hαpos]
+    have hcast : (((1 + t) * (1 + t) * l : ℚ) : ℝ) < ((hh : ℚ) : ℝ) := by exact_mod_cast hkey
+    rw [hl, hhdef] at hcast
+    push_cast at hcast ⊢
+    nlinarith [hcast]
+
+private theorem exists_thresholds {A B : ℝ} (hA : 0 ≤ A) (hAB : A < B) :
+    ∃ beta gamma : ℚ≥0, A < ((beta : ℚ≥0) : ℝ) ∧ ((beta : ℚ≥0) : ℝ) < ((gamma : ℚ≥0) : ℝ) ∧
+      ((gamma : ℚ≥0) : ℝ) < B := by
+  obtain ⟨b, hb1, hb2⟩ := exists_rat_btwn hAB
+  obtain ⟨c, hc1, hc2⟩ := exists_rat_btwn hb2
+  have hb0 : (0 : ℚ) ≤ b := by
+    have : (0 : ℝ) ≤ (b : ℝ) := le_trans hA hb1.le
+    exact_mod_cast this
+  have hc0 : (0 : ℚ) ≤ c := by
+    have : (0 : ℝ) ≤ (c : ℝ) := le_trans (le_trans hA hb1.le) hc1.le
+    exact_mod_cast this
+  have hbcast : ((b.toNNRat : ℚ≥0) : ℝ) = (b : ℝ) := by
+    exact_mod_cast congrArg (fun r : ℚ ↦ (r : ℝ)) (Rat.coe_toNNRat b hb0)
+  have hccast : ((c.toNNRat : ℚ≥0) : ℝ) = (c : ℝ) := by
+    exact_mod_cast congrArg (fun r : ℚ ↦ (r : ℝ)) (Rat.coe_toNNRat c hc0)
+  exact ⟨b.toNNRat, c.toNNRat, by rw [hbcast]; exact hb1, by rw [hbcast, hccast]; exact hc1,
+    by rw [hccast]; exact hc2⟩
+
+private theorem exists_robustPrecision {A beta gamma B : ℝ} (h1 : A < beta) (h2 : beta < gamma)
+    (h3 : gamma < B) :
+    ∃ K : ℕ, A < beta - (2⁻¹ : ℝ) ^ K ∧ gamma + (2⁻¹ : ℝ) ^ K < B ∧
+      beta + (2⁻¹ : ℝ) ^ K < gamma - (2⁻¹ : ℝ) ^ K := by
+  obtain ⟨K, hK⟩ := exists_pow_lt_of_lt_one
+    (show (0 : ℝ) < min (beta - A) (min (B - gamma) ((gamma - beta) / 2)) from
+      lt_min (by linarith) (lt_min (by linarith) (by linarith)))
+    (show (2⁻¹ : ℝ) < 1 by norm_num)
+  have hm1 : (2⁻¹ : ℝ) ^ K < beta - A := lt_of_lt_of_le hK (min_le_left _ _)
+  have hm2 : (2⁻¹ : ℝ) ^ K < B - gamma :=
+    lt_of_lt_of_le hK (le_trans (min_le_right _ _) (min_le_left _ _))
+  have hm3 : (2⁻¹ : ℝ) ^ K < (gamma - beta) / 2 :=
+    lt_of_lt_of_le hK (le_trans (min_le_right _ _) (min_le_right _ _))
+  exact ⟨K, by linarith, by linarith, by linarith⟩
+
 /-! ## The oscillation parameters and witness
 
 Only the parameters enter the program. The two recurrence properties are used solely to prove that
