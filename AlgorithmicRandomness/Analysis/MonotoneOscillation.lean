@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.InfiniteUpperDerivative
+import Mathlib.Data.Fintype.Pigeonhole
 
 /-!
 # Chords of a non-differentiable monotone function
@@ -22,6 +23,8 @@ is itself close to that infimum. That is the whole content of the estimate below
 -/
 
 open Filter Topology
+
+open scoped NNRat NNReal
 
 namespace AlgorithmicRandomness
 
@@ -304,5 +307,91 @@ private theorem exists_raw_chord_gap {z : ℝ} (hz : z ∈ Set.Ioo (0 : ℝ) 1)
         nlinarith [h1, h2, hlq, htpos]
 
 end ComputableMonotone
+
+/-! ## Selecting a grid that recurs
+
+The two cell families are produced one scale at a time, each time by the covering lemma, which may
+return a different grid at each scale. Since the family is finite, one grid is returned infinitely
+often; that grid is the one the construction fixes. -/
+
+private theorem exists_grid_with_infinite_fiber (grids : Finset AffineDyadicGrid)
+    (P : ℕ → AffineDyadicGrid → Prop) (h : ∀ n, ∃ G ∈ grids, P n G) :
+    ∃ G ∈ grids, Set.Infinite {n | P n G} := by
+  classical
+  choose G hG hP using h
+  let pick : ℕ → ↥grids := fun n ↦ ⟨G n, hG n⟩
+  obtain ⟨G₀, hfiber⟩ := Finite.exists_infinite_fiber pick
+  refine ⟨G₀, G₀.property, ?_⟩
+  have hinf : (pick ⁻¹' ({G₀} : Set ↥grids)).Infinite := Set.infinite_coe_iff.mp hfiber
+  refine hinf.mono ?_
+  intro n hn
+  have heq : G n = (G₀ : AffineDyadicGrid) := by
+    have hpick : pick n = G₀ := by simpa using hn
+    exact congrArg Subtype.val hpick
+  simpa [heq] using hP n
+
+/-! ## The oscillation parameters and witness
+
+Only the parameters enter the program. The two recurrence properties are used solely to prove that
+the constructed martingale succeeds at `z`, so the classical selection of the two grids introduces
+no dependence on an oracle. -/
+
+/-- The executable data of the oscillating construction. -/
+private structure OscillationParams where
+  /-- The grid whose cells the betting state uses. -/
+  betGrid : AffineDyadicGrid
+  /-- The grid whose cells the waiting state uses. -/
+  waitGrid : AffineDyadicGrid
+  /-- The lower threshold, as a coded nonnegative rational. -/
+  betaCode : ℕ
+  /-- The upper threshold. -/
+  gammaCode : ℕ
+  /-- The approximation precision of the slope test. -/
+  precision : ℕ
+  /-- The gap survives the approximation slack on both sides. Storing the robust form, rather than
+  `β < γ`, is what later gives the multiplicative gain without reopening the selection. -/
+  robustGap :
+    (((NNRatCode.value betaCode : ℚ≥0) : ℝ) + (2⁻¹ : ℝ) ^ precision)
+      < (((NNRatCode.value gammaCode : ℚ≥0) : ℝ) - (2⁻¹ : ℝ) ^ precision)
+
+namespace OscillationParams
+
+private noncomputable def beta (P : OscillationParams) : ℝ :=
+  ((NNRatCode.value P.betaCode : ℚ≥0) : ℝ)
+
+private noncomputable def gamma (P : OscillationParams) : ℝ :=
+  ((NNRatCode.value P.gammaCode : ℚ≥0) : ℝ)
+
+private noncomputable def margin (P : OscillationParams) : ℝ := (2⁻¹ : ℝ) ^ P.precision
+
+private theorem margin_pos (P : OscillationParams) : 0 < P.margin := by
+  rw [margin]
+  positivity
+
+private theorem beta_add_margin_lt (P : OscillationParams) :
+    P.beta + P.margin < P.gamma - P.margin := P.robustGap
+
+private theorem one_lt_ratio (P : OscillationParams) (hβ : 0 ≤ P.beta) :
+    1 < (P.gamma - P.margin) / (P.beta + P.margin) := by
+  have hpos : 0 < P.beta + P.margin := by linarith [P.margin_pos]
+  rw [lt_div_iff₀ hpos]
+  linarith [P.beta_add_margin_lt]
+
+end OscillationParams
+
+/-- The analytic content: the two selected grids each carry cells of arbitrarily small width whose
+slopes clear the thresholds by the margin. -/
+private structure OscillationWitness (F : ComputableMonotone) (z : ℝ) extends
+    OscillationParams where
+  /-- Betting cells of arbitrarily small width with slope above `γ + margin`. -/
+  arbitrarily_small_high : ∀ ε : ℝ, 0 < ε → ∃ σ : BitString,
+    z ∈ betGrid.interval σ ∧ betGrid.width σ < ε ∧
+      ((NNRatCode.value gammaCode : ℚ≥0) : ℝ) + (2⁻¹ : ℝ) ^ precision
+        < ((affineSlope F betGrid σ : ℝ≥0) : ℝ)
+  /-- Waiting cells of arbitrarily small width with slope below `β - margin`. -/
+  arbitrarily_small_low : ∀ ε : ℝ, 0 < ε → ∃ σ : BitString,
+    z ∈ waitGrid.interval σ ∧ waitGrid.width σ < ε ∧
+      ((affineSlope F waitGrid σ : ℝ≥0) : ℝ)
+        < ((NNRatCode.value betaCode : ℚ≥0) : ℝ) - (2⁻¹ : ℝ) ^ precision
 
 end AlgorithmicRandomness
