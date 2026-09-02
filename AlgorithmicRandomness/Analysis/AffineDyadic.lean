@@ -230,6 +230,118 @@ theorem slope_nonneg_of_monotone {f : ℝ → ℝ} (hf : Monotone f) (σ : BitSt
 
 end AffineDyadicGrid
 
+/-! ## Cells of the whole affine grid
+
+The grid's cells are indexed by an integer block together with a dyadic word inside it, so that
+every translate of the unit cell is named — the earlier `BitString` indexing covers only the block
+`0` interval, which is not enough once regridding may move to a neighbouring block.
+
+At word length `n` the cell carries integer index `block * 2 ^ n + gridIndex word`, so each cell of
+the grid occurs exactly once. Appending a bit is still the child operation, so the endpoint fold and
+its correctness carry over unchanged, and no signed division enters the tree recursion. -/
+
+/-- A cell of the affine grid: an integer block and a dyadic word within it. -/
+structure AffineDyadicCell where
+  /-- Which translate of the unit cell. -/
+  block : ℤ
+  /-- The dyadic address inside that translate. -/
+  word : BitString
+
+namespace AffineDyadicCell
+
+/-- The child obtained by appending a bit. -/
+def child (c : AffineDyadicCell) (b : Bool) : AffineDyadicCell := ⟨c.block, c.word ++ [b]⟩
+
+@[simp] theorem child_block (c : AffineDyadicCell) (b : Bool) : (c.child b).block = c.block := rfl
+
+@[simp] theorem child_word (c : AffineDyadicCell) (b : Bool) :
+    (c.child b).word = c.word ++ [b] := rfl
+
+end AffineDyadicCell
+
+namespace AffineDyadicGrid
+
+variable (G : AffineDyadicGrid)
+
+/-- The left endpoint of a cell. -/
+noncomputable def cellLeft (c : AffineDyadicCell) : ℝ :=
+  G.scale * ((c.block : ℝ) + dyadicLeft c.word) + G.shift
+
+/-- Its width. -/
+noncomputable def cellWidth (c : AffineDyadicCell) : ℝ := G.scale * dyadicWidth c.word
+
+/-- Its right endpoint. -/
+noncomputable def cellRight (c : AffineDyadicCell) : ℝ := G.cellLeft c + G.cellWidth c
+
+/-- The closed interval it names. -/
+def cellInterval (c : AffineDyadicCell) : Set ℝ := Set.Icc (G.cellLeft c) (G.cellRight c)
+
+theorem cellWidth_pos (c : AffineDyadicCell) : 0 < G.cellWidth c :=
+  mul_pos G.zero_lt_scale (dyadicWidth_pos c.word)
+
+theorem cellLeft_lt_cellRight (c : AffineDyadicCell) : G.cellLeft c < G.cellRight c := by
+  rw [cellRight]
+  linarith [G.cellWidth_pos c]
+
+/-! ### The block-zero embedding
+
+The word-indexed cells are the block-`0` ones, so every earlier statement transfers. -/
+
+@[simp] theorem cellLeft_mk_zero (σ : BitString) : G.cellLeft ⟨0, σ⟩ = G.left σ := by
+  rw [cellLeft, AffineDyadicGrid.left]
+  norm_num
+
+@[simp] theorem cellWidth_mk_zero (σ : BitString) : G.cellWidth ⟨0, σ⟩ = G.width σ := rfl
+
+@[simp] theorem cellRight_mk_zero (σ : BitString) : G.cellRight ⟨0, σ⟩ = G.right σ := by
+  rw [cellRight, cellLeft_mk_zero, cellWidth_mk_zero, AffineDyadicGrid.right]
+
+@[simp] theorem cellInterval_mk_zero (σ : BitString) : G.cellInterval ⟨0, σ⟩ = G.interval σ := by
+  rw [cellInterval, cellLeft_mk_zero, cellRight_mk_zero, AffineDyadicGrid.interval]
+
+/-! ### The child relations -/
+
+theorem cellWidth_child (c : AffineDyadicCell) (b : Bool) :
+    G.cellWidth (c.child b) = G.cellWidth c / 2 := by
+  rw [cellWidth, cellWidth, AffineDyadicCell.child_word, dyadicWidth_append]
+  ring
+
+theorem cellLeft_child (c : AffineDyadicCell) (b : Bool) :
+    G.cellLeft (c.child b) = G.cellLeft c + (if b then G.cellWidth c / 2 else 0) := by
+  rw [cellLeft, cellLeft, AffineDyadicCell.child_word, AffineDyadicCell.child_block,
+    dyadicLeft_append, cellWidth]
+  cases b <;> simp only [Bool.false_eq_true, if_false, if_true] <;> ring
+
+theorem cellLeft_child_false (c : AffineDyadicCell) :
+    G.cellLeft (c.child false) = G.cellLeft c := by
+  rw [cellLeft_child]; simp
+
+theorem cellLeft_child_true (c : AffineDyadicCell) :
+    G.cellLeft (c.child true) = G.cellLeft c + G.cellWidth c / 2 := by
+  rw [cellLeft_child]; simp
+
+theorem cellRight_child_true (c : AffineDyadicCell) :
+    G.cellRight (c.child true) = G.cellRight c := by
+  rw [cellRight, cellRight, cellLeft_child_true, cellWidth_child]
+  ring
+
+theorem cellRight_child_false_eq_cellLeft_child_true (c : AffineDyadicCell) :
+    G.cellRight (c.child false) = G.cellLeft (c.child true) := by
+  rw [cellRight, cellLeft_child_false, cellLeft_child_true, cellWidth_child]
+
+/-- **The index identity.** A cell of word length `n` is the affine image of the interval of
+integer index `block * 2 ^ n + gridIndex word` at level `n`. -/
+theorem cellLeft_eq_index (c : AffineDyadicCell) :
+    G.cellLeft c
+      = G.scale * (((c.block * 2 ^ c.word.length + gridIndex c.word : ℤ) : ℝ)
+        / 2 ^ c.word.length) + G.shift := by
+  have hpow : ((2 : ℝ)) ^ c.word.length ≠ 0 := by positivity
+  rw [cellLeft, dyadicLeft_eq_gridPoint, gridPoint]
+  push_cast
+  field_simp
+
+end AffineDyadicGrid
+
 /-! ## The modular core
 
 The covering argument needs one mesh point of the grid `1 / (2 ^ n * k)` to be reachable as a
