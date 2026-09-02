@@ -471,4 +471,172 @@ private structure OscillationWitness (F : ComputableMonotone) (z : ℝ) extends
       ((affineSlope F waitGrid σ : ℝ≥0) : ℝ)
         < ((NNRatCode.value betaCode : ℚ≥0) : ℝ) - (2⁻¹ : ℝ) ^ precision
 
+namespace ComputableMonotone
+
+variable (f : ComputableMonotone)
+
+/-! ## Cells at a prescribed scale
+
+All slope algebra lives here, so the pigeonhole step below is purely combinatorial. -/
+
+private theorem exists_high_cell_at_scale {z : ℝ} {high : ℚ≥0} {α : ℚ} (hα : 1 < α)
+    {grids : Finset AffineDyadicGrid}
+    (houter : ∀ {x y : ℝ}, 0 < x → x < y → y < 1 →
+      ∃ G ∈ grids, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < (α : ℝ) * (y - x))
+    (hchords : ∀ ε > 0, ∃ a b : ℝ, 0 < a ∧ a < b ∧ b < 1 ∧ z ∈ Set.Icc a b ∧ b - a < ε ∧
+      ((high : ℚ≥0) : ℝ) < slope f.addIdentity.toFun a b)
+    {c : ℝ} (hc0 : 0 ≤ c) (hc : c < ((high : ℚ≥0) : ℝ) / (α : ℝ)) (n : ℕ) :
+    ∃ G ∈ grids, ∃ σ, z ∈ G.interval σ ∧ G.width σ < (2⁻¹ : ℝ) ^ n ∧
+      c < ((affineSlope f.addIdentity G σ : ℝ≥0) : ℝ) := by
+  have hαR : (0 : ℝ) < (α : ℝ) := by
+    have : (0 : ℚ) < α := by linarith
+    exact_mod_cast this
+  obtain ⟨a, b, ha, hab, hb, hzab, hwidth, hslope⟩ :=
+    hchords ((2⁻¹ : ℝ) ^ n / (α : ℝ)) (by positivity)
+  obtain ⟨G, hG, σ, hsub, hcell⟩ := houter ha hab hb
+  have hba : (0 : ℝ) < b - a := by linarith
+  have hwpos : (0 : ℝ) < G.width σ := G.width_pos σ
+  have hends : G.left σ ≤ a ∧ b ≤ G.right σ := by
+    have h1 := hsub (Set.left_mem_Icc.mpr hab.le)
+    have h2 := hsub (Set.right_mem_Icc.mpr hab.le)
+    rw [AffineDyadicGrid.interval, Set.mem_Icc] at h1 h2
+    exact ⟨h1.1, h2.2⟩
+  refine ⟨G, hG, σ, hsub hzab, ?_, ?_⟩
+  · refine lt_trans hcell ?_
+    rw [lt_div_iff₀ hαR] at hwidth
+    nlinarith [hwidth]
+  · have hnum : ((high : ℚ≥0) : ℝ) * (b - a) < f.addIdentity.toFun b - f.addIdentity.toFun a := by
+      rw [slope_def_field, lt_div_iff₀ hba] at hslope
+      linarith
+    have hmono : f.addIdentity.toFun b - f.addIdentity.toFun a
+        ≤ f.addIdentity.toFun (G.right σ) - f.addIdentity.toFun (G.left σ) := by
+      have h1 := f.addIdentity.monotone_toFun hends.1
+      have h2 := f.addIdentity.monotone_toFun hends.2
+      linarith
+    have hw : G.right σ - G.left σ = G.width σ := by
+      rw [AffineDyadicGrid.right]
+      ring
+    rw [coe_affineSlope, slope_def_field, hw, lt_div_iff₀ hwpos]
+    have hstep : c * G.width σ ≤ c * ((α : ℝ) * (b - a)) :=
+      mul_le_mul_of_nonneg_left hcell.le hc0
+    have hstep2 : c * ((α : ℝ) * (b - a)) ≤ ((high : ℚ≥0) : ℝ) * (b - a) := by
+      have hle : c * (α : ℝ) ≤ ((high : ℚ≥0) : ℝ) := by
+        rw [lt_div_iff₀ hαR] at hc
+        linarith
+      nlinarith [hba]
+    linarith
+
+private theorem exists_low_cell_at_scale {z : ℝ} {low : ℚ≥0} {α : ℚ} (hα1 : 1 < α)
+    (hα2 : α < 4 / 3) {grids : Finset AffineDyadicGrid}
+    (hinner : ∀ {x y : ℝ}, 0 < x → x < y → y < 1 →
+      ∃ G ∈ grids, ∃ σ, G.interval σ ⊆ Set.Icc x y ∧ y - x < (α : ℝ) * G.width σ)
+    (hchords : ∀ ε > 0, ∃ a b : ℝ, 0 < a ∧ a < b ∧ b < 1 ∧ b - a < ε ∧
+      a + (b - a) / 3 ≤ z ∧ z ≤ a + 2 * (b - a) / 3 ∧
+      slope f.addIdentity.toFun a b < ((low : ℚ≥0) : ℝ))
+    {c : ℝ} (hc : (α : ℝ) * ((low : ℚ≥0) : ℝ) < c) (n : ℕ) :
+    ∃ G ∈ grids, ∃ σ, z ∈ G.interval σ ∧ G.width σ < (2⁻¹ : ℝ) ^ n ∧
+      ((affineSlope f.addIdentity G σ : ℝ≥0) : ℝ) < c := by
+  have hαR : (1 : ℝ) < (α : ℝ) := by exact_mod_cast hα1
+  have hα2R : (α : ℝ) < 4 / 3 := by
+    have hcast : ((α : ℚ) : ℝ) < ((4 / 3 : ℚ) : ℝ) := by exact_mod_cast hα2
+    push_cast at hcast
+    exact hcast
+  obtain ⟨a, b, ha, hab, hb, hwidth, hlo, hhi, hslope⟩ := hchords ((2⁻¹ : ℝ) ^ n) (by positivity)
+  obtain ⟨G, hG, σ, hsub, hcell⟩ := hinner ha hab hb
+  have hba : (0 : ℝ) < b - a := by linarith
+  have hwpos : (0 : ℝ) < G.width σ := G.width_pos σ
+  have hends : a ≤ G.left σ ∧ G.right σ ≤ b := by
+    have h := hsub
+    rw [AffineDyadicGrid.interval] at h
+    have h1 := h (Set.left_mem_Icc.mpr (G.left_lt_right σ).le)
+    have h2 := h (Set.right_mem_Icc.mpr (G.left_lt_right σ).le)
+    rw [Set.mem_Icc] at h1 h2
+    exact ⟨h1.1, h2.2⟩
+  have hw : G.right σ - G.left σ = G.width σ := by
+    rw [AffineDyadicGrid.right]
+    ring
+  have hprod : (α : ℝ) * G.width σ < (4 / 3) * G.width σ := mul_lt_mul_of_pos_right hα2R hwpos
+  have hbig : 3 * (b - a) / 4 < G.width σ := by linarith
+  refine ⟨G, hG, σ, ?_, ?_, ?_⟩
+  · rw [AffineDyadicGrid.interval, Set.mem_Icc]
+    constructor
+    · nlinarith [hends.2, hw, hbig, hlo]
+    · nlinarith [hends.1, hw, hbig, hhi]
+  · refine lt_of_le_of_lt ?_ hwidth
+    linarith [hends.1, hends.2, hw]
+  · have hmono : f.addIdentity.toFun (G.right σ) - f.addIdentity.toFun (G.left σ)
+        ≤ f.addIdentity.toFun b - f.addIdentity.toFun a := by
+      have h1 := f.addIdentity.monotone_toFun hends.1
+      have h2 := f.addIdentity.monotone_toFun hends.2
+      linarith
+    have hnum : f.addIdentity.toFun b - f.addIdentity.toFun a
+        < ((low : ℚ≥0) : ℝ) * (b - a) := by
+      rw [slope_def_field, div_lt_iff₀ hba] at hslope
+      linarith
+    rw [coe_affineSlope, slope_def_field, hw, div_lt_iff₀ hwpos]
+    have hlow0 : (0 : ℝ) ≤ ((low : ℚ≥0) : ℝ) := by positivity
+    have hstep : ((low : ℚ≥0) : ℝ) * (b - a) ≤ ((low : ℚ≥0) : ℝ) * ((α : ℝ) * G.width σ) :=
+      mul_le_mul_of_nonneg_left hcell.le hlow0
+    nlinarith [hmono, hnum, hstep, hwpos, hc]
+
+/-! ## The witness
+
+Everything analytic is sealed here: non-differentiability, the infimum of eventual upper bounds,
+the covering ratio, and the finite pigeonhole. The tree layer sees only the two recurrence
+properties and the robust gap. -/
+
+private theorem nonempty_oscillationWitness {z : ℝ} (hz : z ∈ Set.Ioo (0 : ℝ) 1)
+    (hfinite : FiniteUpperDerivativeAt f.toFun z) (hnot : ¬DifferentiableAt ℝ f.toFun z) :
+    Nonempty (OscillationWitness f.addIdentity z) := by
+  classical
+  obtain ⟨low, high, hlh, hhighChords, hlowChords⟩ := exists_raw_chord_gap f hz hfinite hnot
+  obtain ⟨α, hα1, hα2, hαgap⟩ := exists_coverRatio hlh
+  have hαpos : (0 : ℝ) < (α : ℝ) := by
+    have : (0 : ℚ) < α := by linarith
+    exact_mod_cast this
+  have hA0 : (0 : ℝ) ≤ (α : ℝ) * ((low : ℚ≥0) : ℝ) := by positivity
+  obtain ⟨beta, gamma, hAb, hbg, hgB⟩ := exists_thresholds hA0 hαgap
+  obtain ⟨K, hK1, hK2, hK3⟩ := exists_robustPrecision hAb hbg hgB
+  obtain ⟨grids, houter, hinner⟩ := exists_finite_affineDyadicGrids (α := α) hα1
+  obtain ⟨Ghigh, hGh, hinfH⟩ := exists_grid_with_infinite_fiber grids
+    (fun n G ↦ ∃ σ : BitString, z ∈ G.interval σ ∧ G.width σ < (2⁻¹ : ℝ) ^ n ∧
+      ((gamma : ℚ≥0) : ℝ) + (2⁻¹ : ℝ) ^ K < ((affineSlope f.addIdentity G σ : ℝ≥0) : ℝ))
+    (fun n ↦ exists_high_cell_at_scale f hα1 houter hhighChords
+      (by positivity) hK2 n)
+  obtain ⟨Glow, hGl, hinfL⟩ := exists_grid_with_infinite_fiber grids
+    (fun n G ↦ ∃ σ : BitString, z ∈ G.interval σ ∧ G.width σ < (2⁻¹ : ℝ) ^ n ∧
+      ((affineSlope f.addIdentity G σ : ℝ≥0) : ℝ) < ((beta : ℚ≥0) : ℝ) - (2⁻¹ : ℝ) ^ K)
+    (fun n ↦ exists_low_cell_at_scale f hα1 hα2 hinner hlowChords hK1 n)
+  obtain ⟨bc, hbc⟩ := NNRatCode.value_surjective beta
+  obtain ⟨gc, hgc⟩ := NNRatCode.value_surjective gamma
+  refine ⟨{
+      betGrid := Ghigh
+      waitGrid := Glow
+      betaCode := bc
+      gammaCode := gc
+      precision := K
+      robustGap := ?_
+      arbitrarily_small_high := ?_
+      arbitrarily_small_low := ?_ }⟩
+  · rw [hbc, hgc]
+    exact hK3
+  · intro ε hε
+    obtain ⟨N, hN⟩ := exists_pow_lt_of_lt_one hε (show (2⁻¹ : ℝ) < 1 by norm_num)
+    obtain ⟨n, hnmem, hnN⟩ := hinfH.exists_gt N
+    obtain ⟨σ, hσz, hσw, hσs⟩ := hnmem
+    refine ⟨σ, hσz, lt_trans hσw (lt_of_le_of_lt ?_ hN), ?_⟩
+    · exact pow_le_pow_of_le_one (by norm_num) (by norm_num) (Nat.le_of_lt hnN)
+    · rw [hgc]
+      exact hσs
+  · intro ε hε
+    obtain ⟨N, hN⟩ := exists_pow_lt_of_lt_one hε (show (2⁻¹ : ℝ) < 1 by norm_num)
+    obtain ⟨n, hnmem, hnN⟩ := hinfL.exists_gt N
+    obtain ⟨σ, hσz, hσw, hσs⟩ := hnmem
+    refine ⟨σ, hσz, lt_trans hσw (lt_of_le_of_lt ?_ hN), ?_⟩
+    · exact pow_le_pow_of_le_one (by norm_num) (by norm_num) (Nat.le_of_lt hnN)
+    · rw [hbc]
+      exact hσs
+
+end ComputableMonotone
+
 end AlgorithmicRandomness
