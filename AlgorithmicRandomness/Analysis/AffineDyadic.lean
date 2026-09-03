@@ -257,6 +257,34 @@ def child (c : AffineDyadicCell) (b : Bool) : AffineDyadicCell := ⟨c.block, c.
 @[simp] theorem child_word (c : AffineDyadicCell) (b : Bool) :
     (c.child b).word = c.word ++ [b] := rfl
 
+/-- Whether the cell has a parent: only the block root does not. -/
+def hasParent (c : AffineDyadicCell) : Bool :=
+  match c.word with
+  | [] => false
+  | _ :: _ => true
+
+/-- The parent cell. Total: at a block root the value is arbitrary, and `hasParent` guards every
+use. It is `dropLast` on the word, written through operations the pinned mathlib knows to be
+primitive recursive. -/
+def parent (c : AffineDyadicCell) : AffineDyadicCell := ⟨c.block, c.word.reverse.tail.reverse⟩
+
+@[simp] theorem hasParent_iff (c : AffineDyadicCell) : c.hasParent = true ↔ c.word ≠ [] := by
+  cases hw : c.word <;> simp [hasParent, hw]
+
+@[simp] theorem parent_child (c : AffineDyadicCell) (b : Bool) : (c.child b).parent = c := by
+  rw [parent, child]
+  simp
+
+theorem exists_child_parent (c : AffineDyadicCell) (h : c.hasParent = true) :
+    ∃ b : Bool, c.parent.child b = c := by
+  rcases List.eq_nil_or_concat' c.word with hnil | ⟨σ, b, hσ⟩
+  · exact absurd hnil ((hasParent_iff c).mp h)
+  · refine ⟨b, ?_⟩
+    have hpar : c.parent = ⟨c.block, σ⟩ := by
+      rw [parent, hσ]
+      simp
+    rw [hpar, child, ← hσ]
+
 /-- The encoding equivalence, named so that the projections can be proved once and the transported
 encoding never unfolded again. -/
 def equivProd : AffineDyadicCell ≃ ℤ × BitString where
@@ -274,6 +302,21 @@ theorem primrec_affineDyadicCell_block : Primrec AffineDyadicCell.block :=
 
 theorem primrec_affineDyadicCell_word : Primrec AffineDyadicCell.word :=
   Primrec.snd.comp (Primrec.of_equiv (e := AffineDyadicCell.equivProd))
+
+theorem primrec_affineDyadicCell_hasParent : Primrec AffineDyadicCell.hasParent := by
+  have h : Primrec fun c : AffineDyadicCell ↦ decide (0 < c.word.length) :=
+    primrecPred_iff_primrec_decide.mp
+      (Primrec.nat_lt.comp (Primrec.const 0)
+        (Primrec.list_length.comp primrec_affineDyadicCell_word))
+  refine h.of_eq fun c ↦ ?_
+  cases hw : c.word <;> simp [AffineDyadicCell.hasParent, hw]
+
+theorem primrec_affineDyadicCell_parent : Primrec AffineDyadicCell.parent := by
+  have hword : Primrec fun c : AffineDyadicCell ↦ c.word.reverse.tail.reverse :=
+    Primrec.list_reverse.comp
+      (Primrec.list_tail.comp (Primrec.list_reverse.comp primrec_affineDyadicCell_word))
+  have hpair := Primrec.pair primrec_affineDyadicCell_block hword
+  exact (Primrec.of_equiv_symm.comp hpair).of_eq fun _ ↦ rfl
 
 theorem primrec_affineDyadicCell_child : Primrec₂ AffineDyadicCell.child := by
   have hblock : Primrec fun p : AffineDyadicCell × Bool ↦ p.1.block :=
@@ -353,6 +396,41 @@ theorem cellRight_child_true (c : AffineDyadicCell) :
 theorem cellRight_child_false_eq_cellLeft_child_true (c : AffineDyadicCell) :
     G.cellRight (c.child false) = G.cellLeft (c.child true) := by
   rw [cellRight, cellLeft_child_false, cellLeft_child_true, cellWidth_child]
+
+theorem cellLeft_le_cellLeft_child (c : AffineDyadicCell) (b : Bool) :
+    G.cellLeft c ≤ G.cellLeft (c.child b) := by
+  rw [cellLeft_child]
+  cases b
+  · simp
+  · simp only [if_true]
+    linarith [G.cellWidth_pos c]
+
+theorem cellRight_child_le_cellRight (c : AffineDyadicCell) (b : Bool) :
+    G.cellRight (c.child b) ≤ G.cellRight c := by
+  rw [cellRight, cellRight, cellLeft_child, cellWidth_child]
+  cases b
+  · simp only [Bool.false_eq_true, if_false, add_zero]
+    linarith [G.cellWidth_pos c]
+  · simp only [if_true]
+    linarith
+
+theorem cellInterval_child_subset (c : AffineDyadicCell) (b : Bool) :
+    G.cellInterval (c.child b) ⊆ G.cellInterval c :=
+  Set.Icc_subset_Icc (G.cellLeft_le_cellLeft_child c b) (G.cellRight_child_le_cellRight c b)
+
+theorem cellInterval_subset_parent (c : AffineDyadicCell) (h : c.hasParent = true) :
+    G.cellInterval c ⊆ G.cellInterval c.parent := by
+  obtain ⟨b, hb⟩ := AffineDyadicCell.exists_child_parent c h
+  have hsub := G.cellInterval_child_subset c.parent b
+  rw [hb] at hsub
+  exact hsub
+
+theorem cellWidth_parent (c : AffineDyadicCell) (h : c.hasParent = true) :
+    G.cellWidth c = G.cellWidth c.parent / 2 := by
+  obtain ⟨b, hb⟩ := AffineDyadicCell.exists_child_parent c h
+  have hw := G.cellWidth_child c.parent b
+  rw [hb] at hw
+  exact hw
 
 /-- **The index identity.** A cell of word length `n` is the affine image of the interval of
 integer index `block * 2 ^ n + gridIndex word` at level `n`. -/
@@ -564,6 +642,85 @@ theorem primrec_cellCode : Primrec G.cellCode := by
     (G.primrec_cellRootCode.comp primrec_affineDyadicCell_block) hstep).of_eq fun _ ↦ rfl
 
 end AffineDyadicGrid
+
+/-! ## Eligibility and regridding
+
+A cell is eligible for a parent interval when it lies inside it and, if the half-width flag is set,
+is at most half as wide. A regridding child is an eligible cell whose immediate parent is not
+eligible; the block root has no parent. Since eligibility is inherited by descendants, checking the
+immediate parent is the same as maximality, and it stays executable. -/
+
+/-- The eligibility test. -/
+def eligible (A : RatIntervalCode) (G : AffineDyadicGrid) (half : Bool) (c : AffineDyadicCell) :
+    Bool :=
+  RatCode.le A.leftCode (G.cellCode c).leftCode &&
+    RatCode.le (G.cellCode c).rightCode A.rightCode &&
+    (!half || NNRatCode.le (NNRatCode.double (G.cellCode c).widthCode) A.widthCode)
+
+theorem eligible_iff {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool}
+    {c : AffineDyadicCell} :
+    eligible A G half c = true ↔
+      (A.left ≤ G.cellLeft c ∧ G.cellRight c ≤ A.right) ∧
+        (half = true → 2 * G.cellWidth c ≤ A.width) := by
+  have hL : (RatCode.value A.leftCode ≤ RatCode.value (G.cellCode c).leftCode)
+      ↔ A.left ≤ G.cellLeft c := by
+    rw [← G.left_cellCode c, RatIntervalCode.left, RatIntervalCode.left]
+    exact_mod_cast Iff.rfl
+  have hR : (RatCode.value (G.cellCode c).rightCode ≤ RatCode.value A.rightCode)
+      ↔ G.cellRight c ≤ A.right := by
+    have h1 : ((RatCode.value (G.cellCode c).rightCode : ℚ) : ℝ) = G.cellRight c := by
+      rw [RatIntervalCode.value_rightCode, G.right_cellCode c]
+    have h2 : ((RatCode.value A.rightCode : ℚ) : ℝ) = A.right := RatIntervalCode.value_rightCode A
+    constructor
+    · intro h
+      rw [← h1, ← h2]
+      exact_mod_cast h
+    · intro h
+      rw [← h1, ← h2] at h
+      exact_mod_cast h
+  have hW : (NNRatCode.value (NNRatCode.double (G.cellCode c).widthCode)
+      ≤ NNRatCode.value A.widthCode) ↔ 2 * G.cellWidth c ≤ A.width := by
+    rw [NNRatCode.value_double]
+    have h1 : ((NNRatCode.value (G.cellCode c).widthCode : ℚ≥0) : ℝ) = G.cellWidth c := by
+      rw [← G.width_cellCode c, RatIntervalCode.width]
+    constructor
+    · intro h
+      rw [← h1, RatIntervalCode.width]
+      exact_mod_cast h
+    · intro h
+      rw [← h1, RatIntervalCode.width] at h
+      exact_mod_cast h
+  rw [eligible, Bool.and_eq_true, Bool.and_eq_true, RatCode.le_iff, RatCode.le_iff, hL, hR]
+  constructor
+  · rintro ⟨⟨h1, h2⟩, h3⟩
+    refine ⟨⟨h1, h2⟩, fun hhalf ↦ ?_⟩
+    rw [hhalf] at h3
+    simp only [Bool.not_true, Bool.false_or, NNRatCode.le_iff] at h3
+    exact hW.mp h3
+  · rintro ⟨⟨h1, h2⟩, h3⟩
+    refine ⟨⟨h1, h2⟩, ?_⟩
+    cases hhalf : half
+    · simp
+    · simp only [Bool.not_true, Bool.false_or, NNRatCode.le_iff]
+      exact hW.mpr (h3 hhalf)
+
+/-- **Eligibility is inherited by descendants**, which is what makes "immediate parent ineligible"
+the same as "no proper ancestor eligible". -/
+theorem eligible_child {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool}
+    {c : AffineDyadicCell} (h : eligible A G half c = true) (b : Bool) :
+    eligible A G half (c.child b) = true := by
+  rw [eligible_iff] at h ⊢
+  obtain ⟨⟨h1, h2⟩, h3⟩ := h
+  refine ⟨⟨le_trans h1 (G.cellLeft_le_cellLeft_child c b),
+    le_trans (G.cellRight_child_le_cellRight c b) h2⟩, fun hhalf ↦ ?_⟩
+  rw [G.cellWidth_child c b]
+  have := h3 hhalf
+  linarith [G.cellWidth_pos c]
+
+/-- The regridding children of a parent interval: eligible, with an ineligible immediate parent. -/
+def regridChild (A : RatIntervalCode) (G : AffineDyadicGrid) (half : Bool)
+    (c : AffineDyadicCell) : Bool :=
+  eligible A G half c && (!c.hasParent || !eligible A G half c.parent)
 
 /-! ## The modular core
 
