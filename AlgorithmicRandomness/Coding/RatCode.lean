@@ -258,6 +258,71 @@ theorem primrec_divNNRat : Primrec₂ divNNRat :=
     (NNRatCode.primrec_div.comp (Primrec.fst.comp (Primrec.unpair.comp Primrec.fst)) Primrec.snd)
     (NNRatCode.primrec_div.comp (Primrec.snd.comp (Primrec.unpair.comp Primrec.fst)) Primrec.snd)
 
+/-! ## Multiplying by an integer
+
+The affine grid's cells are indexed by an integer block, so the coded left endpoint needs the
+product of a coded nonnegative rational with an integer. The operation is defined by *constructor
+cases* on `ℤ`: the pinned mathlib has no primitive-recursion API for the integers at all, and going
+through sign and magnitude would require building one. Under the denumerable decoding an input
+natural splits by its lowest bit, so the computability proof is one `cond` over natural-number
+operations that mathlib does provide. -/
+
+/-- The product of an integer with a coded nonnegative rational, as a signed code. -/
+def ofIntMulNNRat : ℤ → ℕ → ℕ
+  | .ofNat n, q => ofNNRat (NNRatCode.mul (NNRatCode.ofNat n) q)
+  | .negSucc n, q => neg (ofNNRat (NNRatCode.mul (NNRatCode.ofNat (n + 1)) q))
+
+theorem value_ofIntMulNNRat (m : ℤ) (q : ℕ) :
+    value (ofIntMulNNRat m q) = (m : ℚ) * ((NNRatCode.value q : ℚ≥0) : ℚ) := by
+  cases m with
+  | ofNat n =>
+    rw [ofIntMulNNRat, value_ofNNRat, NNRatCode.value_mul, NNRatCode.value_ofNat]
+    push_cast [Int.ofNat_eq_natCast]
+    ring
+  | negSucc n =>
+    rw [ofIntMulNNRat, value_neg, value_ofNNRat, NNRatCode.value_mul, NNRatCode.value_ofNat]
+    push_cast
+    ring
+
+private theorem encode_int_ofNat (m : ℕ) : Encodable.encode (Int.ofNat m) = 2 * m := rfl
+
+private theorem encode_int_negSucc (m : ℕ) : Encodable.encode (Int.negSucc m) = 2 * m + 1 := rfl
+
+/-- The denumerable decoding of the integers splits by the lowest bit. -/
+private theorem ofNat_int (n : ℕ) :
+    Denumerable.ofNat ℤ n = if n.bodd then Int.negSucc n.div2 else Int.ofNat n.div2 := by
+  have hb := Nat.bodd_add_div2 n
+  have hn : Encodable.encode (if n.bodd then Int.negSucc n.div2 else Int.ofNat n.div2) = n := by
+    cases hbb : n.bodd
+    · rw [hbb] at hb
+      simp only [Bool.false_eq_true, if_false, encode_int_ofNat]
+      simp only [Bool.toNat_false, Nat.zero_add] at hb
+      exact hb
+    · rw [hbb] at hb
+      simp only [if_true, encode_int_negSucc]
+      simp only [Bool.toNat_true] at hb
+      omega
+  conv_lhs => rw [← hn]
+  exact Denumerable.ofNat_encode _
+
+theorem primrec_ofIntMulNNRat : Primrec₂ ofIntMulNNRat := by
+  rw [Primrec₂.ofNat_iff]
+  have hbodd : Primrec fun p : ℕ × ℕ ↦ p.1.bodd := Primrec.nat_bodd.comp Primrec.fst
+  have hdiv2 : Primrec fun p : ℕ × ℕ ↦ p.1.div2 := Primrec.nat_div2.comp Primrec.fst
+  have hneg : Primrec fun p : ℕ × ℕ ↦
+      neg (ofNNRat (NNRatCode.mul (NNRatCode.ofNat (p.1.div2 + 1)) p.2)) :=
+    primrec_neg.comp (primrec_ofNNRat.comp
+      (NNRatCode.primrec_mul.comp
+        (NNRatCode.primrec_ofNat.comp (Primrec.succ.comp hdiv2)) Primrec.snd))
+  have hpos : Primrec fun p : ℕ × ℕ ↦
+      ofNNRat (NNRatCode.mul (NNRatCode.ofNat p.1.div2) p.2) :=
+    primrec_ofNNRat.comp
+      (NNRatCode.primrec_mul.comp (NNRatCode.primrec_ofNat.comp hdiv2) Primrec.snd)
+  have hcond := Primrec.cond hbodd hneg hpos
+  refine hcond.of_eq fun p ↦ ?_
+  simp only [ofNat_int, Denumerable.ofNat_nat]
+  cases hbb : p.1.bodd <;> simp [ofIntMulNNRat]
+
 /-! ## Clamping into the unit interval
 
 The result is a *nonnegative* code: the clamp is nonnegative by construction, and both consumers —
