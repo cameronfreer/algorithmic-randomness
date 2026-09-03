@@ -367,6 +367,204 @@ theorem cellLeft_eq_index (c : AffineDyadicCell) :
 
 end AffineDyadicGrid
 
+/-! ## Coded rational intervals
+
+An interval is coded by its left endpoint and its *nonnegative* width, rather than by two signed
+endpoints: halving is then one nonnegative operation, the half-width test stays in `ℚ≥0`, and an
+inconsistent endpoint order is impossible. Validity is an external invariant, so the executable
+structure carries no proof field.
+
+Cells are coded by the same child fold that produces them, never by a closed-form sum. Coded
+rationals are not canonical, so two semantically equal formulas need not be equal as naturals, and
+only the fold gives the exact code-level identity `cellCode (child c b) = child (cellCode c) b`. -/
+
+/-- A rational interval: a signed left endpoint and a nonnegative width. -/
+structure RatIntervalCode where
+  /-- The left endpoint, as a signed code. -/
+  leftCode : ℕ
+  /-- The width, as a nonnegative code. -/
+  widthCode : ℕ
+
+namespace RatIntervalCode
+
+/-- The right endpoint. -/
+def rightCode (A : RatIntervalCode) : ℕ := RatCode.add A.leftCode (RatCode.ofNNRat A.widthCode)
+
+/-- The interval is nondegenerate. Kept outside the structure, as an invariant of use. -/
+def Valid (A : RatIntervalCode) : Prop := 0 < NNRatCode.value A.widthCode
+
+noncomputable def left (A : RatIntervalCode) : ℝ := ((RatCode.value A.leftCode : ℚ) : ℝ)
+
+noncomputable def width (A : RatIntervalCode) : ℝ :=
+  ((NNRatCode.value A.widthCode : ℚ≥0) : ℝ)
+
+noncomputable def right (A : RatIntervalCode) : ℝ := A.left + A.width
+
+/-- The closed interval it names. -/
+def interval (A : RatIntervalCode) : Set ℝ := Set.Icc A.left A.right
+
+theorem value_rightCode (A : RatIntervalCode) :
+    ((RatCode.value A.rightCode : ℚ) : ℝ) = A.right := by
+  rw [rightCode, RatCode.value_add, RatCode.value_ofNNRat, Rat.cast_add, RatIntervalCode.right,
+    RatIntervalCode.left, RatIntervalCode.width]
+  push_cast
+  ring
+
+theorem width_nonneg (A : RatIntervalCode) : 0 ≤ A.width := by
+  rw [width]
+  positivity
+
+theorem width_pos (A : RatIntervalCode) (h : A.Valid) : 0 < A.width := by
+  rw [width]
+  exact_mod_cast h
+
+theorem left_lt_right (A : RatIntervalCode) (h : A.Valid) : A.left < A.right := by
+  rw [right]
+  linarith [A.width_pos h]
+
+/-- The unit interval. -/
+def unit : RatIntervalCode := ⟨RatCode.ofNat 0, NNRatCode.ofNat 1⟩
+
+@[simp] theorem left_unit : unit.left = 0 := by
+  rw [left, unit, RatCode.value_ofNat]
+  norm_num
+
+@[simp] theorem width_unit : unit.width = 1 := by
+  rw [width, unit, NNRatCode.value_ofNat]
+  norm_num
+
+@[simp] theorem interval_unit : unit.interval = Set.Icc (0 : ℝ) 1 := by
+  rw [interval, left_unit, right, left_unit, width_unit]
+  norm_num
+
+/-- The child obtained by halving. -/
+def child (A : RatIntervalCode) (b : Bool) : RatIntervalCode :=
+  { leftCode :=
+      if b then RatCode.add A.leftCode (RatCode.ofNNRat (NNRatCode.half A.widthCode))
+      else A.leftCode
+    widthCode := NNRatCode.half A.widthCode }
+
+@[simp] theorem width_child (A : RatIntervalCode) (b : Bool) :
+    (A.child b).width = A.width / 2 := by
+  rw [width, child, NNRatCode.value_half, width]
+  push_cast
+  ring
+
+theorem left_child (A : RatIntervalCode) (b : Bool) :
+    (A.child b).left = A.left + (if b then A.width / 2 else 0) := by
+  rw [RatIntervalCode.left, RatIntervalCode.left, RatIntervalCode.width, child]
+  cases b
+  · simp
+  · simp only [if_true]
+    rw [RatCode.value_add, RatCode.value_ofNNRat, NNRatCode.value_half]
+    push_cast
+    ring
+
+/-- The encoding equivalence. -/
+def equivProd : RatIntervalCode ≃ ℕ × ℕ where
+  toFun A := (A.leftCode, A.widthCode)
+  invFun p := ⟨p.1, p.2⟩
+  left_inv := fun ⟨_, _⟩ ↦ rfl
+  right_inv := fun ⟨_, _⟩ ↦ rfl
+
+end RatIntervalCode
+
+instance : Primcodable RatIntervalCode := Primcodable.ofEquiv _ RatIntervalCode.equivProd
+
+theorem primrec_ratIntervalCode_leftCode : Primrec RatIntervalCode.leftCode :=
+  Primrec.fst.comp (Primrec.of_equiv (e := RatIntervalCode.equivProd))
+
+theorem primrec_ratIntervalCode_widthCode : Primrec RatIntervalCode.widthCode :=
+  Primrec.snd.comp (Primrec.of_equiv (e := RatIntervalCode.equivProd))
+
+theorem primrec_ratIntervalCode_child : Primrec₂ RatIntervalCode.child := by
+  have hleft : Primrec fun p : RatIntervalCode × Bool ↦ p.1.leftCode :=
+    primrec_ratIntervalCode_leftCode.comp Primrec.fst
+  have hwidth : Primrec fun p : RatIntervalCode × Bool ↦ p.1.widthCode :=
+    primrec_ratIntervalCode_widthCode.comp Primrec.fst
+  have hhalf : Primrec fun p : RatIntervalCode × Bool ↦ NNRatCode.half p.1.widthCode :=
+    NNRatCode.primrec_half.comp hwidth
+  have hadd : Primrec fun p : RatIntervalCode × Bool ↦
+      RatCode.add p.1.leftCode (RatCode.ofNNRat (NNRatCode.half p.1.widthCode)) :=
+    RatCode.primrec_add.comp hleft (RatCode.primrec_ofNNRat.comp hhalf)
+  have hcond := Primrec.cond Primrec.snd hadd hleft
+  have hpair := Primrec.pair hcond hhalf
+  refine (Primrec.of_equiv_symm.comp hpair).of_eq fun p ↦ ?_
+  cases p.2 <;> simp [RatIntervalCode.child, RatIntervalCode.equivProd]
+
+namespace AffineDyadicGrid
+
+variable (G : AffineDyadicGrid)
+
+/-- The root cell of a block: the whole translate. -/
+def cellRootCode (block : ℤ) : RatIntervalCode :=
+  { leftCode := RatCode.add G.shiftCode (RatCode.ofIntMulNNRat block G.scaleCode)
+    widthCode := G.scaleCode }
+
+/-- A cell's code, produced by the same child fold that produces the cell. -/
+def cellCode (c : AffineDyadicCell) : RatIntervalCode :=
+  c.word.foldl RatIntervalCode.child (G.cellRootCode c.block)
+
+/-- **The code-level seam.** -/
+theorem cellCode_child (c : AffineDyadicCell) (b : Bool) :
+    G.cellCode (c.child b) = (G.cellCode c).child b := by
+  rw [cellCode, cellCode, AffineDyadicCell.child_word, AffineDyadicCell.child_block,
+    List.foldl_append, List.foldl_cons, List.foldl_nil]
+
+theorem left_cellRootCode (m : ℤ) : (G.cellRootCode m).left = G.cellLeft ⟨m, []⟩ := by
+  rw [RatIntervalCode.left, cellRootCode, RatCode.value_add, RatCode.value_ofIntMulNNRat,
+    cellLeft, dyadicLeft_nil, AffineDyadicGrid.scale, AffineDyadicGrid.shift]
+  push_cast
+  ring
+
+theorem width_cellRootCode (m : ℤ) : (G.cellRootCode m).width = G.cellWidth ⟨m, []⟩ := by
+  rw [RatIntervalCode.width, cellRootCode, cellWidth, dyadicWidth_nil, AffineDyadicGrid.scale]
+  push_cast
+  ring
+
+/-- **The bridge.** The coded interval is the cell. -/
+theorem value_cellCode (m : ℤ) (σ : BitString) :
+    (G.cellCode ⟨m, σ⟩).left = G.cellLeft ⟨m, σ⟩ ∧
+      (G.cellCode ⟨m, σ⟩).width = G.cellWidth ⟨m, σ⟩ := by
+  induction σ using List.reverseRecOn with
+  | nil => exact ⟨G.left_cellRootCode m, G.width_cellRootCode m⟩
+  | append_singleton σ b ih =>
+    have hchild : (⟨m, σ ++ [b]⟩ : AffineDyadicCell) = (⟨m, σ⟩ : AffineDyadicCell).child b := rfl
+    rw [hchild, G.cellCode_child]
+    refine ⟨?_, ?_⟩
+    · rw [RatIntervalCode.left_child, ih.1, ih.2, cellLeft_child]
+    · rw [RatIntervalCode.width_child, ih.2, cellWidth_child]
+
+theorem left_cellCode (c : AffineDyadicCell) : (G.cellCode c).left = G.cellLeft c :=
+  (G.value_cellCode c.block c.word).1
+
+theorem width_cellCode (c : AffineDyadicCell) : (G.cellCode c).width = G.cellWidth c :=
+  (G.value_cellCode c.block c.word).2
+
+theorem right_cellCode (c : AffineDyadicCell) : (G.cellCode c).right = G.cellRight c := by
+  rw [RatIntervalCode.right, left_cellCode, width_cellCode, cellRight]
+
+theorem interval_cellCode (c : AffineDyadicCell) : (G.cellCode c).interval = G.cellInterval c := by
+  rw [RatIntervalCode.interval, left_cellCode, right_cellCode, cellInterval]
+
+theorem primrec_cellRootCode : Primrec G.cellRootCode := by
+  have hleft : Primrec fun m : ℤ ↦
+      RatCode.add G.shiftCode (RatCode.ofIntMulNNRat m G.scaleCode) :=
+    RatCode.primrec_add.comp (Primrec.const _)
+      (RatCode.primrec_ofIntMulNNRat.comp Primrec.id (Primrec.const _))
+  have hpair := Primrec.pair hleft (Primrec.const G.scaleCode)
+  exact (Primrec.of_equiv_symm.comp hpair).of_eq fun _ ↦ rfl
+
+theorem primrec_cellCode : Primrec G.cellCode := by
+  have hstep : Primrec₂ fun (_ : AffineDyadicCell) (p : RatIntervalCode × Bool) ↦
+      RatIntervalCode.child p.1 p.2 :=
+    primrec_ratIntervalCode_child.comp (Primrec.fst.comp Primrec.snd)
+      (Primrec.snd.comp Primrec.snd)
+  exact (Primrec.list_foldl primrec_affineDyadicCell_word
+    (G.primrec_cellRootCode.comp primrec_affineDyadicCell_block) hstep).of_eq fun _ ↦ rfl
+
+end AffineDyadicGrid
+
 /-! ## The modular core
 
 The covering argument needs one mesh point of the grid `1 / (2 ^ n * k)` to be reachable as a
