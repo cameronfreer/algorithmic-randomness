@@ -257,7 +257,32 @@ def child (c : AffineDyadicCell) (b : Bool) : AffineDyadicCell := ⟨c.block, c.
 @[simp] theorem child_word (c : AffineDyadicCell) (b : Bool) :
     (c.child b).word = c.word ++ [b] := rfl
 
+/-- The encoding equivalence, named so that the projections can be proved once and the transported
+encoding never unfolded again. -/
+def equivProd : AffineDyadicCell ≃ ℤ × BitString where
+  toFun c := (c.block, c.word)
+  invFun p := ⟨p.1, p.2⟩
+  left_inv := fun ⟨_, _⟩ ↦ rfl
+  right_inv := fun ⟨_, _⟩ ↦ rfl
+
 end AffineDyadicCell
+
+instance : Primcodable AffineDyadicCell := Primcodable.ofEquiv _ AffineDyadicCell.equivProd
+
+theorem primrec_affineDyadicCell_block : Primrec AffineDyadicCell.block :=
+  Primrec.fst.comp (Primrec.of_equiv (e := AffineDyadicCell.equivProd))
+
+theorem primrec_affineDyadicCell_word : Primrec AffineDyadicCell.word :=
+  Primrec.snd.comp (Primrec.of_equiv (e := AffineDyadicCell.equivProd))
+
+theorem primrec_affineDyadicCell_child : Primrec₂ AffineDyadicCell.child := by
+  have hblock : Primrec fun p : AffineDyadicCell × Bool ↦ p.1.block :=
+    primrec_affineDyadicCell_block.comp Primrec.fst
+  have hword : Primrec fun p : AffineDyadicCell × Bool ↦ p.1.word ++ [p.2] :=
+    Primrec.list_append.comp (primrec_affineDyadicCell_word.comp Primrec.fst)
+      (Primrec.list_cons.comp Primrec.snd (Primrec.const []))
+  have hpair := Primrec.pair hblock hword
+  exact (Primrec.of_equiv_symm.comp hpair).of_eq fun _ ↦ rfl
 
 namespace AffineDyadicGrid
 
