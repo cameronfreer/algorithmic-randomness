@@ -445,6 +445,47 @@ theorem cellLeft_eq_index (c : AffineDyadicCell) :
 
 end AffineDyadicGrid
 
+/-! ## Refinement
+
+Regridding children can have different depths, so the intersection argument is organized around
+structural refinement — same block, one word a prefix of the other — rather than around equal word
+lengths. -/
+
+/-- `c.Refines d` when `d` is a descendant of `c`. -/
+def AffineDyadicCell.Refines (c d : AffineDyadicCell) : Prop :=
+  c.block = d.block ∧ c.word <+: d.word
+
+theorem AffineDyadicCell.parent_word (c : AffineDyadicCell) : c.parent.word = c.word.dropLast := by
+  rw [parent]
+  induction c.word using List.reverseRecOn with
+  | nil => simp
+  | append_singleton σ b _ => simp
+
+namespace AffineDyadicGrid
+
+variable (G : AffineDyadicGrid)
+
+private theorem cellInterval_append_subset (m : ℤ) (σ τ : BitString) :
+    G.cellInterval ⟨m, σ ++ τ⟩ ⊆ G.cellInterval ⟨m, σ⟩ := by
+  induction τ using List.reverseRecOn with
+  | nil => simp
+  | append_singleton τ b ih =>
+    have hchild : (⟨m, σ ++ (τ ++ [b])⟩ : AffineDyadicCell)
+        = (⟨m, σ ++ τ⟩ : AffineDyadicCell).child b := by
+      rw [AffineDyadicCell.child, ← List.append_assoc]
+    rw [hchild]
+    exact subset_trans (G.cellInterval_child_subset _ b) ih
+
+theorem cellInterval_subset_of_refines {c d : AffineDyadicCell} (h : c.Refines d) :
+    G.cellInterval d ⊆ G.cellInterval c := by
+  obtain ⟨hb, τ, hτ⟩ := h
+  have hd : d = (⟨c.block, c.word ++ τ⟩ : AffineDyadicCell) := by
+    rw [hb, hτ]
+  rw [hd]
+  exact G.cellInterval_append_subset c.block c.word τ
+
+end AffineDyadicGrid
+
 /-! ## Coded rational intervals
 
 An interval is coded by its left endpoint and its *nonnegative* width, rather than by two signed
@@ -721,6 +762,60 @@ theorem eligible_child {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool
 def regridChild (A : RatIntervalCode) (G : AffineDyadicGrid) (half : Bool)
     (c : AffineDyadicCell) : Bool :=
   eligible A G half c && (!c.hasParent || !eligible A G half c.parent)
+
+private theorem eligible_append {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool}
+    {m : ℤ} {σ : BitString} (h : eligible A G half ⟨m, σ⟩ = true) (τ : BitString) :
+    eligible A G half ⟨m, σ ++ τ⟩ = true := by
+  induction τ using List.reverseRecOn with
+  | nil => simpa using h
+  | append_singleton τ b ih =>
+    have hchild : (⟨m, σ ++ (τ ++ [b])⟩ : AffineDyadicCell)
+        = (⟨m, σ ++ τ⟩ : AffineDyadicCell).child b := by
+      rw [AffineDyadicCell.child, ← List.append_assoc]
+    rw [hchild]
+    exact eligible_child ih b
+
+theorem eligible_of_refines {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool}
+    {c d : AffineDyadicCell} (hcd : c.Refines d) (h : eligible A G half c = true) :
+    eligible A G half d = true := by
+  obtain ⟨hb, τ, hτ⟩ := hcd
+  have hd : d = (⟨c.block, c.word ++ τ⟩ : AffineDyadicCell) := by rw [hb, hτ]
+  rw [hd]
+  exact eligible_append (by simpa using h) τ
+
+/-- **Refinement collapses regridding children.** Two of them related by refinement are equal:
+otherwise the outer one's eligibility would propagate to the inner one's parent. -/
+theorem regridChild_eq_of_refines {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool}
+    {c d : AffineDyadicCell} (hc : regridChild A G half c = true)
+    (hd : regridChild A G half d = true) (hcd : c.Refines d) : c = d := by
+  rw [regridChild, Bool.and_eq_true] at hc hd
+  by_contra hne
+  obtain ⟨hb, hpre⟩ := hcd
+  have hlen : c.word.length < d.word.length := by
+    rcases lt_or_eq_of_le hpre.length_le with h | h
+    · exact h
+    · exact absurd (by
+        have hw : c.word = d.word := hpre.eq_of_length h
+        cases c
+        cases d
+        simp_all) hne
+  have hdne : d.word ≠ [] := by
+    intro hnil
+    rw [hnil] at hlen
+    simp at hlen
+  have hdparent : d.hasParent = true := (AffineDyadicCell.hasParent_iff d).mpr hdne
+  have hdrop : c.word <+: d.word.dropLast := by
+    refine List.prefix_of_prefix_length_le hpre (List.dropLast_prefix d.word) ?_
+    rw [List.length_dropLast]
+    omega
+  have hrefpar : c.Refines d.parent := by
+    refine ⟨by rw [hb, AffineDyadicCell.parent], ?_⟩
+    rw [AffineDyadicCell.parent_word]
+    exact hdrop
+  have hel := eligible_of_refines hrefpar hc.1
+  have hd2 := hd.2
+  rw [hdparent, hel] at hd2
+  simp at hd2
 
 /-! ## The modular core
 
