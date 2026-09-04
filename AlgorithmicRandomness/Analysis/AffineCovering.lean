@@ -1,0 +1,583 @@
+/-
+Copyright (c) 2026 Cameron Freer. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Cameron Freer
+-/
+import AlgorithmicRandomness.Analysis.AffineDyadic
+
+/-!
+# BMN's finite covering family of affine dyadic grids
+
+For a fixed ratio `α > 1` there is a *finite* family of rationally scaled and shifted dyadic grids
+such that every interval inside the unit interval is covered by a cell of one of them, of
+comparable width, and contains a cell of one of them, again of comparable width. This is BMN's
+Lemma 4.1, and it is the only place where the arithmetic of the mesh `1 / (2 ^ n * k)` appears.
+
+The file is split from `AffineDyadic.lean`, which defines the grids, their cells, and the coded
+eligibility tests; nothing here is used by those definitions.
+-/
+
+namespace AlgorithmicRandomness
+
+/-! ## The modular core
+
+The covering argument needs one mesh point of the grid `1 / (2 ^ n * k)` to be reachable as a
+dyadic point of the grid `1 / 2 ^ n` shifted by a multiple of `1 / k`. That is a statement about
+`ℤ` alone, and it is isolated here so that the geometry never carries arithmetic detail.
+
+The shift is *signed*. Given `M`, the index `i` is the unique representative below `2 ^ n` with
+`i * k ≡ M` modulo `2 ^ n`, and `v` is then forced to be `(M - i * k) / 2 ^ n`. Normalizing `v` to
+a nonnegative residue would change the rational identity by an integer and force a compensating
+change in `i`, whose range is already fixed.
+
+Coprimality is stated as `Nat.Coprime`, not as parity: the covering proof chooses an odd `k` and
+converts once, rather than carrying parity through every line. -/
+
+theorem coprime_two_pow_of_odd {k : ℕ} (hk : Odd k) (n : ℕ) : Nat.Coprime k (2 ^ n) :=
+  Nat.Coprime.pow_right n (Nat.coprime_two_right.mpr hk)
+
+/-- **The Bézout step.** Every multiple of `1 / (2 ^ n * k)` up to `1` is a dyadic point of level
+`n` shifted by an integer multiple of `1 / k`, with the multiple bounded by `k`. -/
+theorem exists_dyadic_shift_decomposition {k n M : ℕ} (hk : 0 < k)
+    (hcop : Nat.Coprime k (2 ^ n)) (hM : M ≤ 2 ^ n * k) :
+    ∃ i : ℕ, i < 2 ^ n ∧ ∃ v : ℤ, |v| ≤ (k : ℤ) ∧ (i : ℤ) * k + v * 2 ^ n = M := by
+  have hpow : (0 : ℤ) < 2 ^ n := by positivity
+  obtain ⟨a, b, hab⟩ := Nat.isCoprime_iff_coprime.mpr hcop
+  rw [Nat.cast_pow, Nat.cast_ofNat] at hab
+  set q : ℤ := (M * a) / 2 ^ n with hq
+  set i : ℤ := (M * a) % 2 ^ n with hi
+  have hsplit : 2 ^ n * q + i = (M : ℤ) * a := Int.mul_ediv_add_emod _ _
+  have hi0 : 0 ≤ i := Int.emod_nonneg _ (ne_of_gt hpow)
+  have hilt : i < 2 ^ n := Int.emod_lt_of_pos _ hpow
+  have hcast : ((i.toNat : ℕ) : ℤ) = i := Int.toNat_of_nonneg hi0
+  have hkpos : (0 : ℤ) < k := by exact_mod_cast hk
+  have hMle : (M : ℤ) ≤ 2 ^ n * k := by exact_mod_cast hM
+  refine ⟨i.toNat, ?_, (M : ℤ) * b + q * k, ?_, ?_⟩
+  · exact_mod_cast hcast ▸ hilt
+  · have hkey : ((M : ℤ) * b + q * k) * 2 ^ n = (M : ℤ) - i * k := by
+      linear_combination (k : ℤ) * hsplit + (M : ℤ) * hab
+    rw [abs_le]
+    constructor
+    · have h1 : -((k : ℤ) * 2 ^ n) ≤ ((M : ℤ) * b + q * k) * 2 ^ n := by
+        rw [hkey]
+        nlinarith [mul_le_mul_of_nonneg_right hilt.le hkpos.le]
+      have h2 : (-(k : ℤ)) * 2 ^ n ≤ ((M : ℤ) * b + q * k) * 2 ^ n := by linarith [h1]
+      exact le_of_mul_le_mul_right h2 hpow
+    · have h1 : ((M : ℤ) * b + q * k) * 2 ^ n ≤ (k : ℤ) * 2 ^ n := by
+        rw [hkey]
+        nlinarith [mul_nonneg hi0 hkpos.le]
+      exact le_of_mul_le_mul_right h1 hpow
+  · rw [hcast]
+    linear_combination (k : ℤ) * hsplit + (M : ℤ) * hab
+
+/-- The rational form: the decomposition is exactly the mesh point. -/
+theorem dyadic_add_shift_eq_mesh {k n M i : ℕ} {v : ℤ} (hk : 0 < k)
+    (h : (i : ℤ) * k + v * 2 ^ n = M) :
+    ((i : ℚ) / 2 ^ n) + (v : ℚ) / k = (M : ℚ) / (2 ^ n * k) := by
+  have hk' : (k : ℚ) ≠ 0 := by positivity
+  have hpow : ((2 : ℚ) ^ n) ≠ 0 := by positivity
+  have h' : (i : ℚ) * k + (v : ℚ) * 2 ^ n = (M : ℚ) := by
+    exact_mod_cast congrArg (fun z : ℤ ↦ (z : ℚ)) h
+  field_simp
+  linear_combination h'
+
+/-! ## The finite family
+
+For one fixed `k`, the family is indexed by `l` with `k / 2 < l ≤ k` and by the signed shift
+multiplier `v` with `|v| ≤ k`. The resolution `n` and the word index `i` are *not* parameters of
+the family: they are chosen per interval, and the grid is what stays fixed. Indexing by `n` as well
+would make the family infinite.
+
+A grid of the family has scale `l / k` and shift `l * v / k ^ 2`. The second is the affine
+translation, not the auxiliary mesh shift `v / k`: the mesh shift is measured before rescaling, so
+the translation is `p` times it.
+
+Everything here is private. The geometry consumes only the identities below and the membership
+lemma, never the shape of the family. -/
+
+/-- The coded shift `l * v / k ^ 2`, with the sign carried by the two parts of the signed code. -/
+private def shiftCodeOfLKv (k l : ℕ) (v : ℤ) : ℕ :=
+  if 0 ≤ v then Nat.pair (Nat.pair (l * v.toNat) (k * k - 1)) (Nat.pair 0 0)
+  else Nat.pair (Nat.pair 0 0) (Nat.pair (l * (-v).toNat) (k * k - 1))
+
+/-- The grid with scale `l / k` and shift `l * v / k ^ 2`. -/
+private def gridOfLKv (k l : ℕ) (v : ℤ) (hl : 0 < l) : AffineDyadicGrid where
+  scaleCode := Nat.pair l (k - 1)
+  shiftCode := shiftCodeOfLKv k l v
+  scale_pos := by
+    rw [NNRatCode.value_pos_iff, Nat.unpair_pair]
+    exact hl
+
+private theorem scale_gridOfLKv {k l : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) :
+    (gridOfLKv k l v hl).scale = (l : ℝ) / k := by
+  rw [AffineDyadicGrid.scale, gridOfLKv, NNRatCode.value_pair, Nat.sub_add_cancel hk]
+  push_cast
+  ring
+
+private theorem shift_gridOfLKv {k l : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) :
+    (gridOfLKv k l v hl).shift = (l : ℝ) * v / (k : ℝ) ^ 2 := by
+  have hkk : 0 < k * k := Nat.mul_pos hk hk
+  rw [AffineDyadicGrid.shift, gridOfLKv, shiftCodeOfLKv]
+  by_cases hv : 0 ≤ v
+  · rw [if_pos hv, RatCode.value_pair, NNRatCode.value_pair, NNRatCode.value_pair,
+      Nat.sub_add_cancel hkk]
+    have hto : ((v.toNat : ℕ) : ℝ) = (v : ℝ) := by exact_mod_cast Int.toNat_of_nonneg hv
+    push_cast
+    rw [hto]
+    ring
+  · rw [if_neg hv, RatCode.value_pair, NNRatCode.value_pair, NNRatCode.value_pair,
+      Nat.sub_add_cancel hkk]
+    have hto : (((-v).toNat : ℕ) : ℝ) = -(v : ℝ) := by
+      have h0 : (0 : ℤ) ≤ -v := by omega
+      exact_mod_cast Int.toNat_of_nonneg h0
+    push_cast
+    rw [hto]
+    ring
+
+-- The grids carry a proof field, so equality is not decidable by structure; one classical
+-- instance, local to this file, keeps every `Finset.image` below on the same footing.
+@[reducible] private noncomputable def decEqAffineDyadicGrid : DecidableEq AffineDyadicGrid :=
+  Classical.decEq _
+
+attribute [local instance] decEqAffineDyadicGrid
+
+/-- The finite family for a fixed `k`. -/
+private noncomputable def gridFamily (k : ℕ) : Finset AffineDyadicGrid :=
+  (((Finset.Icc (k / 2 + 1) k) ×ˢ (Finset.Icc (-(k : ℤ)) (k : ℤ))).attach).image
+    fun p ↦ gridOfLKv k p.1.1 p.1.2 (by
+      have h := (Finset.mem_Icc.mp (Finset.mem_product.mp p.2).1).1
+      omega)
+
+/-- Membership, stated against the parameter bounds. This is the only door into the family. -/
+private theorem gridOfLKv_mem_family {k l : ℕ} {v : ℤ} (hl : 0 < l) (hl1 : k / 2 < l)
+    (hl2 : l ≤ k) (hv : |v| ≤ (k : ℤ)) : gridOfLKv k l v hl ∈ gridFamily k := by
+  rw [gridFamily]
+  refine Finset.mem_image.mpr ⟨⟨(l, v), ?_⟩, Finset.mem_attach _ _, rfl⟩
+  refine Finset.mem_product.mpr ⟨Finset.mem_Icc.mpr ⟨by omega, hl2⟩, Finset.mem_Icc.mpr ?_⟩
+  exact ⟨(abs_le.mp hv).1, (abs_le.mp hv).2⟩
+
+/-! ### The endpoint identities
+
+With `σ` the word of length `n` at index `i`, and `i * k + v * 2 ^ n = M` the decomposition, the
+left endpoint is exactly the mesh point `p * M / (2 ^ n * k)`. The width and right endpoint are
+recorded here too, since the containment and distortion estimates consume all three and should not
+have to reopen the bridge between codes and semantics. -/
+
+private theorem width_gridOfLKv {k l n i : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) (hi : i < 2 ^ n) :
+    (gridOfLKv k l v hl).width ((BitString.wordsOfLength n).getD i [])
+      = ((l : ℝ) / k) / 2 ^ n := by
+  have hlt : i < (BitString.wordsOfLength n).length := by
+    rw [BitString.length_wordsOfLength]; exact hi
+  have hlen : ((BitString.wordsOfLength n).getD i []).length = n := by
+    refine BitString.length_of_mem_wordsOfLength ?_
+    rw [List.getD_eq_getElem _ _ hlt]
+    exact List.getElem_mem _
+  rw [AffineDyadicGrid.width, scale_gridOfLKv hk hl, dyadicWidth, hlen, inv_pow, div_eq_mul_inv]
+  ring
+
+private theorem left_gridOfLKv {k l n i M : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) (hi : i < 2 ^ n)
+    (h : (i : ℤ) * k + v * 2 ^ n = M) :
+    (gridOfLKv k l v hl).left ((BitString.wordsOfLength n).getD i [])
+      = ((l : ℝ) / k) * ((M : ℝ) / (2 ^ n * k)) := by
+  have hlt : i < (BitString.wordsOfLength n).length := by
+    rw [BitString.length_wordsOfLength]; exact hi
+  have hlen : ((BitString.wordsOfLength n).getD i []).length = n := by
+    refine BitString.length_of_mem_wordsOfLength ?_
+    rw [List.getD_eq_getElem _ _ hlt]
+    exact List.getElem_mem _
+  have hkR : (k : ℝ) ≠ 0 := by positivity
+  have hmesh : ((i : ℝ) / 2 ^ n) + (v : ℝ) / k = (M : ℝ) / (2 ^ n * k) := by
+    have hq := congrArg (fun r : ℚ ↦ (r : ℝ)) (dyadic_add_shift_eq_mesh (i := i) hk h)
+    push_cast at hq
+    exact hq
+  rw [AffineDyadicGrid.left, scale_gridOfLKv hk hl, shift_gridOfLKv hk hl, dyadicLeft_eq_gridPoint,
+    hlen, gridIndex_getD_wordsOfLength hi, gridPoint, ← hmesh]
+  field_simp
+
+private theorem right_gridOfLKv {k l n i M : ℕ} {v : ℤ} (hk : 0 < k) (hl : 0 < l) (hi : i < 2 ^ n)
+    (h : (i : ℤ) * k + v * 2 ^ n = M) :
+    (gridOfLKv k l v hl).right ((BitString.wordsOfLength n).getD i [])
+      = ((l : ℝ) / k) * (((M + k : ℕ) : ℝ) / (2 ^ n * k)) := by
+  have hkR : (k : ℝ) ≠ 0 := by positivity
+  have hpow : ((2 : ℝ) ^ n) ≠ 0 := by positivity
+  rw [AffineDyadicGrid.right, left_gridOfLKv hk hl hi h, width_gridOfLKv hk hl hi]
+  push_cast
+  field_simp
+
+/-! ## Scale selection
+
+The arithmetic behind the covering lemma, isolated from all geometry and stated without `α`, so
+that the same lemma serves the outer construction and the inner one at `(α + 1) / 2`.
+
+The level `n` is chosen so that `t` sits in `[(1 - 1/k) 2⁻⁽ⁿ⁺¹⁾, (1 - 1/k) 2⁻ⁿ)`, and then `l` is
+the least admissible multiplier with `t + η < (l/k) 2⁻ⁿ`, where `η = 2⁻ⁿ/k` is the mesh. The first
+inequality is *strict* and has to be: a cell of width exactly `t` positioned with its left endpoint
+just below the target would have its right endpoint fall short. The extra mesh unit is what absorbs
+the positional error, and the strictness is also what makes the inner ratio strict later.
+
+The hypothesis is `t < 1/2`, the normalized case. Reducing a general interval to it is a separate
+affine normalization, not part of this lemma. -/
+
+private theorem exists_outer_scale {k : ℕ} (hk : 3 ≤ k) {t : ℝ} (ht : 0 < t)
+    (ht_half : t < 1 / 2) :
+    ∃ n l : ℕ, k / 2 < l ∧ l ≤ k ∧
+      t + 1 / ((k : ℝ) * 2 ^ n) < (l : ℝ) / ((k : ℝ) * 2 ^ n) ∧
+      (l : ℝ) / ((k : ℝ) * 2 ^ n) ≤ t + 2 / ((k : ℝ) * 2 ^ n) ∧
+      (2⁻¹ : ℝ) ^ n ≤ 4 * t := by
+  classical
+  have hkR : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
+  have hk0 : (0 : ℝ) < (k : ℝ) := by linarith
+  -- The level: the last one whose scaled width still exceeds `t * k`.
+  have hex : ∃ m : ℕ, ¬ (t * k < ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ m) := by
+    obtain ⟨m, hm⟩ := exists_pow_lt_of_lt_one
+      (show (0 : ℝ) < t * k / ((k : ℝ) - 1) from div_pos (by positivity) (by linarith))
+      (show (2⁻¹ : ℝ) < 1 by norm_num)
+    refine ⟨m, ?_⟩
+    rw [not_lt]
+    rw [lt_div_iff₀ (by linarith : (0 : ℝ) < (k : ℝ) - 1)] at hm
+    linarith
+  have hP0 : t * k < ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ 0 := by
+    rw [pow_zero, mul_one]
+    nlinarith
+  have hfind0 : Nat.find hex ≠ 0 := by
+    intro h
+    have hspec := Nat.find_spec hex
+    rw [h] at hspec
+    exact hspec hP0
+  obtain ⟨n, hn⟩ : ∃ n, Nat.find hex = n + 1 := ⟨Nat.find hex - 1, by omega⟩
+  have hPn : t * k < ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ n :=
+    not_not.mp (Nat.find_min hex (by omega))
+  have hQn : ((k : ℝ) - 1) * (2⁻¹ : ℝ) ^ (n + 1) ≤ t * k := by
+    have hspec := Nat.find_spec hex
+    rw [hn, not_lt] at hspec
+    exact hspec
+  -- Scaled quantities.
+  have hApos : (0 : ℝ) < (2⁻¹ : ℝ) ^ n := by positivity
+  have hpow0 : (0 : ℝ) < (2 : ℝ) ^ n := by positivity
+  have hA : (2⁻¹ : ℝ) ^ n * 2 ^ n = 1 := by rw [← mul_pow]; norm_num
+  have hden : (0 : ℝ) < (k : ℝ) * 2 ^ n := by positivity
+  set T : ℝ := t * (k : ℝ) * 2 ^ n with hTdef
+  have hT0 : 0 ≤ T := by positivity
+  have hTlt : T < (k : ℝ) - 1 := by
+    have h := mul_lt_mul_of_pos_right hPn hpow0
+    rw [mul_assoc ((k : ℝ) - 1), hA, mul_one] at h
+    exact h
+  have hTge : ((k : ℝ) - 1) / 2 ≤ T := by
+    have h := mul_le_mul_of_nonneg_right hQn hpow0.le
+    rw [pow_succ, mul_assoc ((k : ℝ) - 1), mul_assoc ((2⁻¹ : ℝ) ^ n), mul_comm (2⁻¹ : ℝ),
+      ← mul_assoc ((2⁻¹ : ℝ) ^ n), hA, one_mul] at h
+    linarith
+  -- The multiplier.
+  refine ⟨n, ⌊T⌋₊ + 2, ?_, ?_, ?_, ?_, ?_⟩
+  · have hlt : ((k : ℝ)) / 2 < ((⌊T⌋₊ + 2 : ℕ) : ℝ) := by
+      have h1 := Nat.lt_floor_add_one T
+      push_cast
+      linarith
+    have h2 : (((k / 2 : ℕ)) : ℝ) ≤ (k : ℝ) / 2 := by
+      exact_mod_cast Nat.cast_div_le
+    exact_mod_cast lt_of_le_of_lt h2 hlt
+  · have hfl : ⌊T⌋₊ < k - 1 := by
+      rw [Nat.floor_lt hT0, Nat.cast_sub (by omega : 1 ≤ k), Nat.cast_one]
+      exact hTlt
+    omega
+  · rw [lt_div_iff₀ hden]
+    have h1 := Nat.lt_floor_add_one T
+    push_cast
+    field_simp
+    nlinarith [h1, hden]
+  · rw [div_le_iff₀ hden]
+    have h2 := Nat.floor_le hT0
+    push_cast
+    field_simp
+    nlinarith [h2, hden]
+  · nlinarith [hQn, hApos, hkR, ht]
+
+/-- The `α`-threaded form. Keeping `α` out of the selection itself is what lets the same lemma
+serve the outer construction and the inner one at `(α + 1) / 2`; only the ratio bound changes, and
+`8 / k` rather than `2 / k` is the true cost, since the mesh unit absorbing the positional error is
+paid twice and the level is only within a factor of four of `t`. -/
+private theorem exists_outer_scale_ratio {k : ℕ} (hk : 3 ≤ k) {α t : ℝ}
+    (hα : 1 + 8 / (k : ℝ) < α) (ht : 0 < t) (ht_half : t < 1 / 2) :
+    ∃ n l : ℕ, k / 2 < l ∧ l ≤ k ∧
+      t + 1 / ((k : ℝ) * 2 ^ n) < (l : ℝ) / ((k : ℝ) * 2 ^ n) ∧
+      (l : ℝ) / ((k : ℝ) * 2 ^ n) < α * t := by
+  obtain ⟨n, l, hl1, hl2, hlow, hhigh, hsmall⟩ := exists_outer_scale hk ht ht_half
+  have hk0 : (0 : ℝ) < (k : ℝ) := by
+    have : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
+    linarith
+  refine ⟨n, l, hl1, hl2, hlow, ?_⟩
+  have heq : 2 / ((k : ℝ) * 2 ^ n) = (2 / (k : ℝ)) * (2⁻¹ : ℝ) ^ n := by
+    rw [inv_pow]
+    field_simp
+  have hstep : 2 / ((k : ℝ) * 2 ^ n) ≤ 8 * t / (k : ℝ) := by
+    rw [heq]
+    calc (2 / (k : ℝ)) * (2⁻¹ : ℝ) ^ n
+        ≤ (2 / (k : ℝ)) * (4 * t) := by
+          exact mul_le_mul_of_nonneg_left hsmall (by positivity)
+      _ = 8 * t / (k : ℝ) := by field_simp; ring
+  have hfinal : t + 8 * t / (k : ℝ) = (1 + 8 / (k : ℝ)) * t := by
+    field_simp
+  calc (l : ℝ) / ((k : ℝ) * 2 ^ n)
+      ≤ t + 2 / ((k : ℝ) * 2 ^ n) := hhigh
+    _ ≤ t + 8 * t / (k : ℝ) := by linarith
+    _ = (1 + 8 / (k : ℝ)) * t := hfinal
+    _ < α * t := mul_lt_mul_of_pos_right hα ht
+
+/-! ## Positioning
+
+The scale is chosen; what remains is to slide a cell of that scale so that it covers the target.
+The mesh is `1 / k` of a cell, so the left endpoint can be placed within one mesh unit below `x`,
+and the strict inequality `t + η < w` is exactly what makes the far end clear `y`.
+
+The same normalization that bounds the interval bounds the mesh index: `x < 1/2` and `p > 1/2`
+give `x / p < 1`, hence `M < 2 ^ n * k`, which is the modular theorem's hypothesis. No separate
+coarse estimate is needed. -/
+
+private theorem natCeil_sub_one_bracket {r : ℝ} (hr : 0 < r) :
+    (((⌈r⌉₊ - 1 : ℕ) : ℝ) < r ∧ r ≤ (⌈r⌉₊ : ℝ)) := by
+  have h1 : 1 ≤ ⌈r⌉₊ := Nat.one_le_ceil_iff.mpr hr
+  refine ⟨?_, Nat.le_ceil r⟩
+  rw [Nat.cast_sub h1, Nat.cast_one]
+  have := Nat.ceil_lt_add_one hr.le
+  linarith
+
+private theorem exists_odd_k {α : ℝ} (hα : 1 < α) :
+    ∃ k : ℕ, 3 ≤ k ∧ Odd k ∧ 1 + 8 / (k : ℝ) < α := by
+  have hα0 : (0 : ℝ) < α - 1 := by linarith
+  have hz : (0 : ℝ) < 8 / (α - 1) := by positivity
+  have hceil : 8 / (α - 1) ≤ (⌈8 / (α - 1)⌉₊ : ℝ) := Nat.le_ceil _
+  have h1 : 1 ≤ ⌈8 / (α - 1)⌉₊ := Nat.one_le_ceil_iff.mpr hz
+  refine ⟨2 * ⌈8 / (α - 1)⌉₊ + 1, by omega, Nat.odd_iff.mpr (by omega), ?_⟩
+  have hK0 : (0 : ℝ) < ((2 * ⌈8 / (α - 1)⌉₊ + 1 : ℕ) : ℝ) := by positivity
+  have hKgt : 8 / (α - 1) < ((2 * ⌈8 / (α - 1)⌉₊ + 1 : ℕ) : ℝ) := by
+    push_cast
+    linarith
+  rw [div_lt_iff₀ hα0] at hKgt
+  have h8 : (8 : ℝ) / ((2 * ⌈8 / (α - 1)⌉₊ + 1 : ℕ) : ℝ) < α - 1 := by
+    rw [div_lt_iff₀ hK0]
+    linarith
+  linarith
+
+private theorem exists_outer_interval_normalized_strict {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+    {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1 / 2) :
+    ∃ G ∈ gridFamily k, ∃ σ,
+      G.left σ < x ∧ y < G.right σ ∧ G.width σ < α * (y - x) := by
+  have hknat : 0 < k := by omega
+  have hkR : (3 : ℝ) ≤ (k : ℝ) := by exact_mod_cast hk
+  have hk0 : (0 : ℝ) < (k : ℝ) := by linarith
+  have ht : 0 < y - x := by linarith
+  have ht_half : y - x < 1 / 2 := by linarith
+  obtain ⟨n, l, hl1, hl2, hlow, hhigh⟩ := exists_outer_scale_ratio hk hα ht ht_half
+  have hk2l : k < 2 * l := by omega
+  have hl0 : 0 < l := by omega
+  have hlR : (0 : ℝ) < (l : ℝ) := by exact_mod_cast hl0
+  have hlk : (l : ℝ) ≤ (k : ℝ) := by exact_mod_cast hl2
+  have hk2lR : (k : ℝ) < 2 * (l : ℝ) := by exact_mod_cast hk2l
+  have hpow0 : (0 : ℝ) < (2 : ℝ) ^ n := by positivity
+  have hden : (0 : ℝ) < (k : ℝ) * 2 ^ n := by positivity
+  set W : ℝ := (l : ℝ) / ((k : ℝ) * 2 ^ n) with hW
+  set η : ℝ := 1 / ((k : ℝ) * 2 ^ n) with hηdef
+  have hW0 : 0 < W := by rw [hW]; positivity
+  have hη0 : 0 < η := by rw [hηdef]; positivity
+  have hWk : W / k ≤ η := by
+    rw [hW, hηdef, div_div, div_le_div_iff₀ (by positivity) (by positivity)]
+    nlinarith
+  -- the mesh index below `x`
+  set r : ℝ := x * k / W with hr
+  have hr0 : 0 < r := by rw [hr]; positivity
+  obtain ⟨hb1, hb2⟩ := natCeil_sub_one_bracket hr0
+  set M : ℕ := ⌈r⌉₊ - 1 with hM
+  have hceil1 : 1 ≤ ⌈r⌉₊ := Nat.one_le_ceil_iff.mpr hr0
+  have hMsucc : ((⌈r⌉₊ : ℕ) : ℝ) = (M : ℝ) + 1 := by
+    rw [hM, Nat.cast_sub hceil1, Nat.cast_one]
+    ring
+  have hrW : r * (W / k) = x := by
+    rw [hr]
+    field_simp
+  have hM1 : (M : ℝ) * (W / k) < x := by
+    rw [← hrW]
+    exact mul_lt_mul_of_pos_right hb1 (by positivity)
+  have hM2 : x ≤ ((M : ℝ) + 1) * (W / k) := by
+    rw [← hrW, ← hMsucc]
+    exact mul_le_mul_of_nonneg_right hb2 (by positivity)
+  -- the modular hypothesis
+  have hrlt : r < (k : ℝ) * 2 ^ n := by
+    rw [hr, hW, div_div_eq_mul_div, div_lt_iff₀ (by positivity)]
+    have hxk : x * (k : ℝ) < (l : ℝ) := by nlinarith
+    have hmul := mul_lt_mul_of_pos_right hxk hden
+    linarith [hmul, mul_comm ((l : ℝ)) ((k : ℝ) * 2 ^ n)]
+  have hMle : M ≤ 2 ^ n * k := by
+    have hltR : (M : ℝ) < (k : ℝ) * 2 ^ n := lt_trans hb1 hrlt
+    have hnat : M < k * 2 ^ n := by exact_mod_cast hltR
+    rw [mul_comm k (2 ^ n)] at hnat
+    omega
+  obtain ⟨i, hi, v, hv, hdec⟩ :=
+    exists_dyadic_shift_decomposition hknat (coprime_two_pow_of_odd hkodd n) hMle
+  have hleft := left_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi hdec
+  have hwidth := width_gridOfLKv (k := k) (l := l) (v := v) hknat hl0 hi
+  have hAeq : ((l : ℝ) / k) * ((M : ℝ) / (2 ^ n * k)) = (M : ℝ) * (W / k) := by
+    rw [hW]
+    field_simp
+  have hWeq : ((l : ℝ) / k) / 2 ^ n = W := by
+    rw [hW]
+    field_simp
+  refine ⟨gridOfLKv k l v hl0, gridOfLKv_mem_family hl0 hl1 hl2 hv,
+    (BitString.wordsOfLength n).getD i [], ?_, ?_, ?_⟩
+  · rw [hleft, hAeq]
+    exact hM1
+  · rw [AffineDyadicGrid.right, hleft, hwidth, hAeq, hWeq]
+    nlinarith [hM2, hWk, hlow]
+  · rw [hwidth, hWeq]
+    exact hhigh
+
+/-- The subset-shaped form. The strict core is kept, because the inner approximation needs the
+strict endpoint inequalities to produce a strict ratio. -/
+private theorem exists_outer_interval_normalized {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+    {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1 / 2) :
+    ∃ G ∈ gridFamily k, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < α * (y - x) := by
+  obtain ⟨G, hG, σ, h1, h2, h3⟩ :=
+    exists_outer_interval_normalized_strict hk hkodd hα hx hxy hy
+  refine ⟨G, hG, σ, ?_, h3⟩
+  rw [AffineDyadicGrid.interval]
+  exact Set.Icc_subset_Icc h1.le h2.le
+
+/-! ## Doubling, and the general interval
+
+Halving a target interval into `(0, 1/2)` and doubling the resulting grid is the whole of the
+normalization. Doubling acts on both codes, so it stays inside the coded layer, and the membership
+equivalence below makes the transport of containment definitional rather than a `Set.image`
+argument. Every endpoint gap scales by two, so strict inequalities survive. -/
+
+private def doubleGrid (G : AffineDyadicGrid) : AffineDyadicGrid where
+  scaleCode := NNRatCode.double G.scaleCode
+  shiftCode := RatCode.double G.shiftCode
+  scale_pos := by
+    rw [NNRatCode.value_double]
+    exact mul_pos two_pos G.scale_pos
+
+private theorem scale_doubleGrid (G : AffineDyadicGrid) :
+    (doubleGrid G).scale = 2 * G.scale := by
+  rw [AffineDyadicGrid.scale, AffineDyadicGrid.scale, doubleGrid, NNRatCode.value_double]
+  push_cast
+  ring
+
+private theorem shift_doubleGrid (G : AffineDyadicGrid) :
+    (doubleGrid G).shift = 2 * G.shift := by
+  rw [AffineDyadicGrid.shift, AffineDyadicGrid.shift, doubleGrid, RatCode.value_double]
+  push_cast
+  ring
+
+private theorem left_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
+    (doubleGrid G).left σ = 2 * G.left σ := by
+  rw [AffineDyadicGrid.left, AffineDyadicGrid.left, scale_doubleGrid, shift_doubleGrid]
+  ring
+
+private theorem width_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
+    (doubleGrid G).width σ = 2 * G.width σ := by
+  rw [AffineDyadicGrid.width, AffineDyadicGrid.width, scale_doubleGrid]
+  ring
+
+private theorem right_doubleGrid (G : AffineDyadicGrid) (σ : BitString) :
+    (doubleGrid G).right σ = 2 * G.right σ := by
+  rw [AffineDyadicGrid.right, AffineDyadicGrid.right, left_doubleGrid, width_doubleGrid]
+  ring
+
+private noncomputable def normalizedGridFamily (k : ℕ) : Finset AffineDyadicGrid :=
+  (gridFamily k).image doubleGrid
+
+private theorem mem_normalizedGridFamily {k : ℕ} {G : AffineDyadicGrid} (hG : G ∈ gridFamily k) :
+    doubleGrid G ∈ normalizedGridFamily k := by
+  rw [normalizedGridFamily]
+  exact Finset.mem_image_of_mem _ hG
+
+/-- **The outer approximation**, on the whole interior and still strict. -/
+private theorem exists_outer_interval_strict {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k)
+    {α x y : ℝ} (hα : 1 + 8 / (k : ℝ) < α) (hx : 0 < x) (hxy : x < y) (hy : y < 1) :
+    ∃ G ∈ normalizedGridFamily k, ∃ σ,
+      G.left σ < x ∧ y < G.right σ ∧ G.width σ < α * (y - x) := by
+  obtain ⟨G, hG, σ, h1, h2, h3⟩ := exists_outer_interval_normalized_strict hk hkodd hα
+    (by linarith : (0 : ℝ) < x / 2) (by linarith : x / 2 < y / 2) (by linarith : y / 2 < 1 / 2)
+  have h3' : G.width σ < α * (y - x) / 2 := by
+    rw [show α * (y - x) / 2 = α * (y / 2 - x / 2) by ring]
+    exact h3
+  refine ⟨doubleGrid G, mem_normalizedGridFamily hG, σ, ?_, ?_, ?_⟩
+  · rw [left_doubleGrid]
+    linarith
+  · rw [right_doubleGrid]
+    linarith
+  · rw [width_doubleGrid]
+    linarith
+
+/-! ## The inner approximation
+
+Shrink the target by `ε h` at each end, cover the shrunken interval from outside at precision
+`α₀ = 1 + ε`, and the covering interval is trapped strictly inside the original. The two shaves and
+the outer slack are chosen so that they cancel exactly: with `h = (y - x) / α` the covered width is
+below `(1 + ε) h`, while the room available at each end is `ε h`, and `1 + 2ε = α`.
+
+This consumes the *strict* outer theorem. With only the subset form, `a < u` and `v < b` would
+degrade to `≤` and the conclusion would be `y - x ≤ α * width`. -/
+
+private theorem exists_inner_interval {k : ℕ} (hk : 3 ≤ k) (hkodd : Odd k) {α x y : ℝ}
+    (hα : 1 < α) (hkα : 1 + 8 / (k : ℝ) < (α + 1) / 2) (hx : 0 < x) (hxy : x < y) (hy : y < 1) :
+    ∃ G ∈ normalizedGridFamily k, ∃ σ,
+      G.interval σ ⊆ Set.Icc x y ∧ y - x < α * G.width σ := by
+  have hα0 : 0 < α := by linarith
+  set ε : ℝ := (α - 1) / 2 with hε
+  set h : ℝ := (y - x) / α with hh
+  have hε0 : 0 < ε := by rw [hε]; linarith
+  have hh0 : 0 < h := by rw [hh]; positivity
+  have hyx : y - x = α * h := by rw [hh]; field_simp
+  have hu0 : 0 < x + ε * h := by positivity
+  have huv : x + ε * h < y - ε * h := by nlinarith
+  have hv1 : y - ε * h < 1 := by nlinarith
+  obtain ⟨G, hG, σ, ha, hb, hw⟩ :=
+    exists_outer_interval_strict hk hkodd (α := (α + 1) / 2) hkα hu0 huv hv1
+  have hdiff : (y - ε * h) - (x + ε * h) = h := by rw [hε]; ring_nf; linarith [hyx]
+  have hwlt : G.width σ < (1 + ε) * h := by
+    rw [hdiff] at hw
+    calc G.width σ < (α + 1) / 2 * h := hw
+      _ = (1 + ε) * h := by rw [hε]; ring
+  have hright : G.right σ = G.left σ + G.width σ := rfl
+  refine ⟨G, hG, σ, ?_, ?_⟩
+  · rw [AffineDyadicGrid.interval]
+    refine Set.Icc_subset_Icc ?_ ?_
+    · nlinarith [hb, hwlt, hright]
+    · nlinarith [ha, hwlt, hright]
+  · have hlt : h < G.width σ := by
+      rw [hright] at hb
+      nlinarith [ha, hb, hdiff]
+    nlinarith [hlt, hyx]
+
+/-! ## The covering lemma -/
+
+/-- **BMN Lemma 4.1.** One finite family of rationally scaled and shifted dyadic grids approximates
+every interval interior to `(0, 1)` from both sides, to any rational precision.
+
+A single family serves both conclusions: it is chosen at precision `(α + 1) / 2`, which is below
+`α` for the outer approximation and is exactly what the inner construction needs.
+
+The family is *semantic*: it is not computed uniformly from a code for `α`. That stronger
+transformation, which BMN remark on, is not part of this development. It is not needed here,
+because every member already carries concrete natural codes for its scale and shift, so a grid
+selected later still yields an actual computable object. -/
+theorem exists_finite_affineDyadicGrids {α : ℚ} (hα : 1 < α) :
+    ∃ grids : Finset AffineDyadicGrid,
+      (∀ {x y : ℝ}, 0 < x → x < y → y < 1 →
+        ∃ G ∈ grids, ∃ σ, Set.Icc x y ⊆ G.interval σ ∧ G.width σ < (α : ℝ) * (y - x)) ∧
+      (∀ {x y : ℝ}, 0 < x → x < y → y < 1 →
+        ∃ G ∈ grids, ∃ σ, G.interval σ ⊆ Set.Icc x y ∧ y - x < (α : ℝ) * G.width σ) := by
+  have hαR : (1 : ℝ) < (α : ℝ) := by exact_mod_cast hα
+  have hα0 : (1 : ℝ) < ((α : ℝ) + 1) / 2 := by linarith
+  obtain ⟨k, hk, hkodd, hkα⟩ := exists_odd_k hα0
+  refine ⟨normalizedGridFamily k, ?_, ?_⟩
+  · intro x y hx hxy hy
+    obtain ⟨G, hG, σ, hl, hr, hw⟩ := exists_outer_interval_strict hk hkodd hkα hx hxy hy
+    refine ⟨G, hG, σ, ?_, ?_⟩
+    · rw [AffineDyadicGrid.interval]
+      exact Set.Icc_subset_Icc hl.le hr.le
+    · nlinarith [hw, hxy]
+  · intro x y hx hxy hy
+    exact exists_inner_interval hk hkodd hαR hkα hx hxy hy
+
+end AlgorithmicRandomness

@@ -38,6 +38,7 @@ import AlgorithmicRandomness.Analysis.CDFProgram
 import AlgorithmicRandomness.Analysis.LipschitzRandomness
 import AlgorithmicRandomness.Analysis.ComputableMonotone
 import AlgorithmicRandomness.Analysis.AffineDyadic
+import AlgorithmicRandomness.Analysis.AffineCovering
 import AlgorithmicRandomness.Analysis.RationalExpansion
 import AlgorithmicRandomness.Analysis.SavingsCDF
 import AlgorithmicRandomness.Analysis.AffineSlope
