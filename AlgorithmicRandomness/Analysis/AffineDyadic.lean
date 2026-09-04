@@ -3,7 +3,7 @@ Copyright (c) 2026 Cameron Freer. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
-import AlgorithmicRandomness.Analysis.DyadicGrid
+import AlgorithmicRandomness.Analysis.BinaryExpansion
 import AlgorithmicRandomness.Coding.RatCode
 import Mathlib.LinearAlgebra.AffineSpace.Slope
 
@@ -816,6 +816,112 @@ theorem regridChild_eq_of_refines {A : RatIntervalCode} {G : AffineDyadicGrid} {
   have hd2 := hd.2
   rw [hdparent, hel] at hd2
   simp at hd2
+
+/-! ## Comparability at a non-rational point
+
+Two cells containing a common non-rational point are related by refinement. Blocks must agree,
+because distinct blocks meet only at a shared affine endpoint, which is rational; and within a
+block the two words are both prefixes of any expansion of the normalized point. -/
+
+private theorem rat_of_affine (G : AffineDyadicGrid) (r : ℚ) :
+    ∃ s : ℚ, G.scale * (r : ℝ) + G.shift = (s : ℝ) := by
+  refine ⟨((NNRatCode.value G.scaleCode : ℚ≥0) : ℚ) * r + RatCode.value G.shiftCode, ?_⟩
+  rw [AffineDyadicGrid.scale, AffineDyadicGrid.shift]
+  push_cast
+  ring
+
+private theorem mem_dyadicInterval_of_mem_cellInterval {G : AffineDyadicGrid}
+    {c : AffineDyadicCell} {x : ℝ} (h : x ∈ G.cellInterval c) :
+    (x - G.shift) / G.scale - (c.block : ℝ) ∈ dyadicInterval c.word := by
+  have hs := G.zero_lt_scale
+  rw [AffineDyadicGrid.cellInterval, Set.mem_Icc, AffineDyadicGrid.cellRight,
+    AffineDyadicGrid.cellLeft, AffineDyadicGrid.cellWidth] at h
+  rw [dyadicInterval, Set.mem_Icc, dyadicRight]
+  constructor
+  · rw [le_sub_iff_add_le, le_div_iff₀ hs]
+    nlinarith [h.1]
+  · rw [sub_le_iff_le_add, div_le_iff₀ hs]
+    nlinarith [h.2]
+
+private theorem block_eq_of_mem_cellIntervals_of_ne_rat {G : AffineDyadicGrid}
+    {c d : AffineDyadicCell} {x : ℝ} (hx : ∀ q : ℚ, x ≠ (q : ℝ))
+    (hc : x ∈ G.cellInterval c) (hd : x ∈ G.cellInterval d) : c.block = d.block := by
+  have hroot : ∀ e : AffineDyadicCell, x ∈ G.cellInterval e →
+      G.scale * (e.block : ℝ) + G.shift ≤ x ∧
+        x ≤ G.scale * ((e.block : ℝ) + 1) + G.shift := by
+    intro e he
+    have hsub : G.cellInterval e ⊆ G.cellInterval ⟨e.block, []⟩ :=
+      G.cellInterval_subset_of_refines ⟨rfl, List.nil_prefix⟩
+    have h := hsub he
+    rw [AffineDyadicGrid.cellInterval, Set.mem_Icc, AffineDyadicGrid.cellRight,
+      AffineDyadicGrid.cellLeft, AffineDyadicGrid.cellWidth] at h
+    simp only [dyadicLeft_nil, dyadicWidth_nil, add_zero, mul_one] at h
+    exact ⟨h.1, by linarith [h.2]⟩
+  obtain ⟨hc1, hc2⟩ := hroot c hc
+  obtain ⟨hd1, hd2⟩ := hroot d hd
+  by_contra hne
+  have hs := G.zero_lt_scale
+  rcases lt_or_gt_of_ne hne with h | h
+  · have hle : (c.block : ℝ) + 1 ≤ (d.block : ℝ) := by exact_mod_cast h
+    obtain ⟨s, hs'⟩ := rat_of_affine G ((c.block : ℚ) + 1)
+    refine hx s ?_
+    rw [← hs']
+    push_cast
+    nlinarith [hc2, hd1]
+  · have hle : (d.block : ℝ) + 1 ≤ (c.block : ℝ) := by exact_mod_cast h
+    obtain ⟨s, hs'⟩ := rat_of_affine G ((d.block : ℚ) + 1)
+    refine hx s ?_
+    rw [← hs']
+    push_cast
+    nlinarith [hd2, hc1]
+
+/-- **Comparability.** Two cells sharing a non-rational point are nested. -/
+theorem comparable_of_mem_cellIntervals_of_ne_rat {G : AffineDyadicGrid}
+    {c d : AffineDyadicCell} {x : ℝ} (hx : ∀ q : ℚ, x ≠ (q : ℝ))
+    (hc : x ∈ G.cellInterval c) (hd : x ∈ G.cellInterval d) :
+    c.Refines d ∨ d.Refines c := by
+  have hblock := block_eq_of_mem_cellIntervals_of_ne_rat hx hc hd
+  have hs := G.zero_lt_scale
+  set u : ℝ := (x - G.shift) / G.scale - (c.block : ℝ) with hu
+  have hmemc : u ∈ dyadicInterval c.word := mem_dyadicInterval_of_mem_cellInterval hc
+  have hmemd : u ∈ dyadicInterval d.word := by
+    rw [hu, hblock]
+    exact mem_dyadicInterval_of_mem_cellInterval hd
+  have hu01 : u ∈ Set.Icc (0 : ℝ) 1 := dyadicInterval_subset_unit c.word hmemc
+  have hunr : ∀ q : ℚ, u ≠ (q : ℝ) := by
+    intro q hq
+    obtain ⟨s, hs'⟩ := rat_of_affine G (q + (c.block : ℚ))
+    refine hx s ?_
+    rw [← hs']
+    rw [hu, sub_eq_iff_eq_add] at hq
+    push_cast
+    field_simp at hq
+    linarith [hq]
+  obtain ⟨w, hw⟩ := exists_realOf_eq hu01
+  have hcw : initSeg w c.word.length = c.word := by
+    refine initSeg_eq_of_mem_dyadicInterval_of_ne_rat ?_ ?_
+    · rw [hw]; exact hmemc
+    · rw [hw]; exact hunr
+  have hdw : initSeg w d.word.length = d.word := by
+    refine initSeg_eq_of_mem_dyadicInterval_of_ne_rat ?_ ?_
+    · rw [hw]; exact hmemd
+    · rw [hw]; exact hunr
+  rcases le_total c.word.length d.word.length with hlen | hlen
+  · refine Or.inl ⟨hblock, ?_⟩
+    rw [← hcw, ← hdw]
+    exact initSeg_prefix_of_le hlen
+  · refine Or.inr ⟨hblock.symm, ?_⟩
+    rw [← hcw, ← hdw]
+    exact initSeg_prefix_of_le hlen
+
+/-- **Distinct regridding children meet only in rationals.** -/
+theorem regridChild_disjoint_of_ne_rat {A : RatIntervalCode} {G : AffineDyadicGrid} {half : Bool}
+    {c d : AffineDyadicCell} (hc : regridChild A G half c = true)
+    (hd : regridChild A G half d = true) {x : ℝ} (hx : ∀ q : ℚ, x ≠ (q : ℝ))
+    (hxc : x ∈ G.cellInterval c) (hxd : x ∈ G.cellInterval d) : c = d := by
+  rcases comparable_of_mem_cellIntervals_of_ne_rat hx hxc hxd with h | h
+  · exact regridChild_eq_of_refines hc hd h
+  · exact (regridChild_eq_of_refines hd hc h).symm
 
 /-! ## The modular core
 
