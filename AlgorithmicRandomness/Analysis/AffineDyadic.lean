@@ -5,6 +5,7 @@ Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.BinaryExpansion
 import AlgorithmicRandomness.Coding.RatCode
+import Mathlib.Data.Set.Finite.List
 import Mathlib.LinearAlgebra.AffineSpace.Slope
 
 /-!
@@ -353,6 +354,32 @@ theorem cellWidth_pos (c : AffineDyadicCell) : 0 < G.cellWidth c :=
 theorem cellLeft_lt_cellRight (c : AffineDyadicCell) : G.cellLeft c < G.cellRight c := by
   rw [cellRight]
   linarith [G.cellWidth_pos c]
+
+/-- **Normalization.** Membership in a cell is membership of the normalized point in the cell's
+dyadic interval, translated by the block. -/
+theorem mem_cellInterval_iff {c : AffineDyadicCell} {x : ℝ} :
+    x ∈ G.cellInterval c ↔ (x - G.shift) / G.scale - (c.block : ℝ) ∈ dyadicInterval c.word := by
+  have hs := G.zero_lt_scale
+  have hcell : x ∈ G.cellInterval c ↔
+      G.scale * ((c.block : ℝ) + dyadicLeft c.word) + G.shift ≤ x ∧
+        x ≤ G.scale * ((c.block : ℝ) + dyadicLeft c.word) + G.shift
+          + G.scale * dyadicWidth c.word := by
+    rw [cellInterval, Set.mem_Icc, cellRight, cellLeft, cellWidth]
+  have hdy : (x - G.shift) / G.scale - (c.block : ℝ) ∈ dyadicInterval c.word ↔
+      dyadicLeft c.word ≤ (x - G.shift) / G.scale - (c.block : ℝ) ∧
+        (x - G.shift) / G.scale - (c.block : ℝ) ≤ dyadicLeft c.word + dyadicWidth c.word := by
+    rw [dyadicInterval, Set.mem_Icc, dyadicRight]
+  rw [hcell, hdy, le_sub_iff_add_le, le_div_iff₀ hs, sub_le_iff_le_add, div_le_iff₀ hs]
+  constructor
+  · rintro ⟨h1, h2⟩
+    exact ⟨by nlinarith, by nlinarith⟩
+  · rintro ⟨h1, h2⟩
+    exact ⟨by nlinarith, by nlinarith⟩
+
+/-- The same, for a cell given by its two components. -/
+theorem mem_cellInterval_mk_iff {m : ℤ} {σ : BitString} {x : ℝ} :
+    x ∈ G.cellInterval ⟨m, σ⟩ ↔ (x - G.shift) / G.scale - (m : ℝ) ∈ dyadicInterval σ :=
+  G.mem_cellInterval_iff
 
 /-! ### The block-zero embedding
 
@@ -873,19 +900,6 @@ private theorem rat_of_affine (G : AffineDyadicGrid) (r : ℚ) :
   push_cast
   ring
 
-private theorem mem_dyadicInterval_of_mem_cellInterval {G : AffineDyadicGrid}
-    {c : AffineDyadicCell} {x : ℝ} (h : x ∈ G.cellInterval c) :
-    (x - G.shift) / G.scale - (c.block : ℝ) ∈ dyadicInterval c.word := by
-  have hs := G.zero_lt_scale
-  rw [AffineDyadicGrid.cellInterval, Set.mem_Icc, AffineDyadicGrid.cellRight,
-    AffineDyadicGrid.cellLeft, AffineDyadicGrid.cellWidth] at h
-  rw [dyadicInterval, Set.mem_Icc, dyadicRight]
-  constructor
-  · rw [le_sub_iff_add_le, le_div_iff₀ hs]
-    nlinarith [h.1]
-  · rw [sub_le_iff_le_add, div_le_iff₀ hs]
-    nlinarith [h.2]
-
 private theorem block_eq_of_mem_cellIntervals_of_ne_rat {G : AffineDyadicGrid}
     {c d : AffineDyadicCell} {x : ℝ} (hx : ∀ q : ℚ, x ≠ (q : ℝ))
     (hc : x ∈ G.cellInterval c) (hd : x ∈ G.cellInterval d) : c.block = d.block := by
@@ -926,10 +940,10 @@ theorem comparable_of_mem_cellIntervals_of_ne_rat {G : AffineDyadicGrid}
   have hblock := block_eq_of_mem_cellIntervals_of_ne_rat hx hc hd
   have hs := G.zero_lt_scale
   set u : ℝ := (x - G.shift) / G.scale - (c.block : ℝ) with hu
-  have hmemc : u ∈ dyadicInterval c.word := mem_dyadicInterval_of_mem_cellInterval hc
+  have hmemc : u ∈ dyadicInterval c.word := G.mem_cellInterval_iff.mp hc
   have hmemd : u ∈ dyadicInterval d.word := by
     rw [hu, hblock]
-    exact mem_dyadicInterval_of_mem_cellInterval hd
+    exact G.mem_cellInterval_iff.mp hd
   have hu01 : u ∈ Set.Icc (0 : ℝ) 1 := dyadicInterval_subset_unit c.word hmemc
   have hunr : ∀ q : ℚ, u ≠ (q : ℝ) := by
     intro q hq
@@ -965,5 +979,134 @@ theorem regridChild_disjoint_of_ne_rat {A : RatIntervalCode} {G : AffineDyadicGr
   rcases comparable_of_mem_cellIntervals_of_ne_rat hx hxc hxd with h | h
   · exact regridChild_eq_of_refines hc hd h
   · exact (regridChild_eq_of_refines hd hc h).symm
+
+/-! ## Coverage
+
+A non-rational point of the parent interval lies in a regridding child. The point is normalized by
+the grid, its integer part names the block, and any expansion of the fractional part names a chain
+of cells all containing the point, with widths `scale * 2⁻ⁿ`. Once the width drops below the single
+margin
+
+`min (x - A.left) (min (A.right - x) (A.width / 2))`,
+
+which is positive because rational endpoints cannot equal `x`, containment and the optional
+half-width condition hold together. The *least* eligible depth is then a regridding child: at depth
+zero the word is empty, so there is no parent, and at a successor depth minimality makes the
+immediate parent ineligible. -/
+
+theorem exists_regridChild_of_mem_of_ne_rat (A : RatIntervalCode) (G : AffineDyadicGrid)
+    (half : Bool) {x : ℝ} (hx : ∀ q : ℚ, x ≠ (q : ℝ)) (hxA : x ∈ A.interval) :
+    ∃ c : AffineDyadicCell, regridChild A G half c = true ∧ x ∈ G.cellInterval c := by
+  classical
+  have hs := G.zero_lt_scale
+  have hxl : A.left < x := by
+    refine lt_of_le_of_ne hxA.1 fun h ↦ hx (RatCode.value A.leftCode) ?_
+    rw [← h, RatIntervalCode.left]
+  have hxr : x < A.right := by
+    refine lt_of_le_of_ne hxA.2 fun h ↦ hx (RatCode.value A.rightCode) ?_
+    rw [h]
+    exact (RatIntervalCode.value_rightCode A).symm
+  have hwA : 0 < A.width := by
+    rw [RatIntervalCode.right] at hxr
+    linarith
+  -- the margin
+  set ε : ℝ := min (x - A.left) (min (A.right - x) (A.width / 2)) with hε
+  have hεpos : 0 < ε := lt_min (by linarith) (lt_min (by linarith) (by linarith))
+  -- the chain of cells through `x`
+  obtain ⟨w, hw⟩ :=
+    exists_realOf_eq (z := (x - G.shift) / G.scale - (⌊(x - G.shift) / G.scale⌋ : ℝ))
+      ⟨sub_nonneg.mpr (Int.floor_le _),
+        by simpa using (Int.fract_lt_one ((x - G.shift) / G.scale)).le⟩
+  have hmem : ∀ n : ℕ, x ∈ G.cellInterval ⟨⌊(x - G.shift) / G.scale⌋, initSeg w n⟩ := fun n ↦ by
+    rw [G.mem_cellInterval_mk_iff, ← hw]
+    exact realOf_mem_dyadicInterval w n
+  have hwidth : ∀ n : ℕ,
+      G.cellWidth ⟨⌊(x - G.shift) / G.scale⌋, initSeg w n⟩ = G.scale * (2 : ℝ)⁻¹ ^ n := fun n ↦ by
+    rw [AffineDyadicGrid.cellWidth, dyadicWidth_initSeg]
+  -- small cells are eligible
+  have hsmall : ∀ n : ℕ, G.cellWidth ⟨⌊(x - G.shift) / G.scale⌋, initSeg w n⟩ < ε →
+      eligible A G half ⟨⌊(x - G.shift) / G.scale⌋, initSeg w n⟩ = true := by
+    intro n hn
+    have hx1 := (hmem n).1
+    have hx2 := (hmem n).2
+    rw [AffineDyadicGrid.cellRight] at hx2
+    have h1 : ε ≤ x - A.left := min_le_left _ _
+    have h2 : ε ≤ A.right - x := le_trans (min_le_right _ _) (min_le_left _ _)
+    have h3 : ε ≤ A.width / 2 := le_trans (min_le_right _ _) (min_le_right _ _)
+    rw [eligible_iff]
+    exact ⟨⟨by linarith, by rw [AffineDyadicGrid.cellRight]; linarith⟩, fun _ ↦ by linarith⟩
+  -- some depth is eligible
+  have hex : ∃ n : ℕ, eligible A G half ⟨⌊(x - G.shift) / G.scale⌋, initSeg w n⟩ = true := by
+    obtain ⟨n, hn⟩ :=
+      exists_pow_lt_of_lt_one (div_pos hεpos hs) (by norm_num : (2 : ℝ)⁻¹ < 1)
+    refine ⟨n, hsmall n ?_⟩
+    rw [hwidth n, ← lt_div_iff₀' hs]
+    exact hn
+  refine ⟨⟨⌊(x - G.shift) / G.scale⌋, initSeg w (Nat.find hex)⟩, ?_, hmem _⟩
+  rw [regridChild, Bool.and_eq_true]
+  refine ⟨Nat.find_spec hex, ?_⟩
+  rcases Nat.eq_zero_or_pos (Nat.find hex) with h0 | hpos
+  · rw [h0]
+    simp [AffineDyadicCell.hasParent]
+  · obtain ⟨m, hm⟩ := Nat.exists_eq_succ_of_ne_zero hpos.ne'
+    have hchild : (⟨⌊(x - G.shift) / G.scale⌋, initSeg w (Nat.find hex)⟩ : AffineDyadicCell)
+        = (⟨⌊(x - G.shift) / G.scale⌋, initSeg w m⟩ : AffineDyadicCell).child (w m) := by
+      rw [hm, AffineDyadicCell.child, initSeg_succ]
+    have hmin : ¬ eligible A G half ⟨⌊(x - G.shift) / G.scale⌋, initSeg w m⟩ = true :=
+      Nat.find_min hex (by omega)
+    rw [hchild, AffineDyadicCell.parent_child]
+    simp [Bool.eq_false_iff.mpr hmin]
+
+/-! ## Local finiteness
+
+At any positive width there are only finitely many eligible cells that wide, hence only finitely
+many regridding children. Two independent bounds do it, and neither needs the coverage argument:
+the width pins the word length, and eligibility together with `dyadicLeft ∈ [0, 1]` pins the block
+to a bounded range of integers. -/
+
+theorem finite_regridChildren_width_gt (A : RatIntervalCode) (G : AffineDyadicGrid) (half : Bool)
+    {ε : ℝ} (hε : 0 < ε) :
+    {c : AffineDyadicCell | regridChild A G half c = true ∧ ε < G.cellWidth c}.Finite := by
+  have hs := G.zero_lt_scale
+  obtain ⟨L, hL⟩ := exists_pow_lt_of_lt_one (div_pos hε hs) (by norm_num : (2 : ℝ)⁻¹ < 1)
+  set lo : ℤ := ⌊(A.left - G.shift) / G.scale - 1⌋ with hlo
+  set hi : ℤ := ⌈(A.right - G.shift) / G.scale⌉ with hhi
+  have hbounds : ∀ c : AffineDyadicCell,
+      regridChild A G half c = true ∧ ε < G.cellWidth c →
+        (c.block ∈ Set.Icc lo hi ∧ c.word.length ≤ L) := by
+    rintro c ⟨hc, hw⟩
+    rw [regridChild, Bool.and_eq_true] at hc
+    obtain ⟨⟨hleft, hright⟩, -⟩ := eligible_iff.mp hc.1
+    refine ⟨⟨?_, ?_⟩, ?_⟩
+    · -- the block is not too small: the cell's left endpoint is at most `scale * (block + 1)`
+      have h : (A.left - G.shift) / G.scale - 1 ≤ (c.block : ℝ) := by
+        rw [AffineDyadicGrid.cellLeft] at hleft
+        rw [sub_le_iff_le_add, div_le_iff₀ hs]
+        nlinarith [dyadicLeft_le_one c.word]
+      calc lo ≤ ⌊(c.block : ℝ)⌋ := Int.floor_mono h
+        _ = c.block := Int.floor_intCast _
+    · -- the block is not too large: the cell's right endpoint is at least `scale * block`
+      have h : (c.block : ℝ) ≤ (A.right - G.shift) / G.scale := by
+        rw [AffineDyadicGrid.cellRight, AffineDyadicGrid.cellLeft, AffineDyadicGrid.cellWidth]
+          at hright
+        rw [le_div_iff₀ hs]
+        nlinarith [dyadicLeft_nonneg c.word, (dyadicWidth_pos c.word).le]
+      calc c.block = ⌈(c.block : ℝ)⌉ := (Int.ceil_intCast _).symm
+        _ ≤ hi := Int.ceil_mono h
+    · -- a wide cell has a short word
+      by_contra hlen
+      have hle : L ≤ c.word.length := le_of_not_ge hlen
+      have hmono : (2 : ℝ)⁻¹ ^ c.word.length ≤ (2 : ℝ)⁻¹ ^ L :=
+        pow_le_pow_of_le_one (by norm_num) (by norm_num) hle
+      have hscaled : G.scale * (2 : ℝ)⁻¹ ^ c.word.length ≤ G.scale * (2 : ℝ)⁻¹ ^ L :=
+        mul_le_mul_of_nonneg_left hmono hs.le
+      have hLε : G.scale * (2 : ℝ)⁻¹ ^ L < ε := (lt_div_iff₀' hs).mp hL
+      rw [AffineDyadicGrid.cellWidth, dyadicWidth] at hw
+      linarith
+  refine Set.Finite.subset
+    (((Set.finite_Icc lo hi).prod (List.finite_length_le Bool L)).image
+      fun p : ℤ × BitString ↦ (⟨p.1, p.2⟩ : AffineDyadicCell)) ?_
+  intro c hc
+  exact ⟨(c.block, c.word), hbounds c hc, rfl⟩
 
 end AlgorithmicRandomness
