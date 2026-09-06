@@ -8,6 +8,7 @@ import AlgorithmicRandomness.Cantor.FairCoin
 import AlgorithmicRandomness.Cantor.FiniteOpen
 import AlgorithmicRandomness.Coding.Partrec
 import AlgorithmicRandomness.Coding.TotalCode
+import AlgorithmicRandomness.Coding.ComputableFold
 import AlgorithmicRandomness.EffectiveOpen.Code
 import AlgorithmicRandomness.EffectiveOpen.Reindex
 import AlgorithmicRandomness.EffectiveOpen.Trim
@@ -43,6 +44,7 @@ import AlgorithmicRandomness.Analysis.RationalExpansion
 import AlgorithmicRandomness.Analysis.SavingsCDF
 import AlgorithmicRandomness.Analysis.AffineSlope
 import AlgorithmicRandomness.Analysis.InfiniteUpperDerivative
+import AlgorithmicRandomness.Analysis.OscillationParams
 import AlgorithmicRandomness.Analysis.MonotoneOscillation
 import AlgorithmicRandomness.Complexity.PrefixMachine
 import AlgorithmicRandomness.Complexity.Universal

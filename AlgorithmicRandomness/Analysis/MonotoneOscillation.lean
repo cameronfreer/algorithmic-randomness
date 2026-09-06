@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.InfiniteUpperDerivative
+import AlgorithmicRandomness.Analysis.OscillationParams
 import Mathlib.Data.Fintype.Pigeonhole
 
 /-!
@@ -407,54 +408,10 @@ private theorem exists_robustPrecision {A beta gamma B : ℝ} (h1 : A < beta) (h
     lt_of_lt_of_le hK (le_trans (min_le_right _ _) (min_le_right _ _))
   exact ⟨K, by linarith, by linarith, by linarith⟩
 
-/-! ## The oscillation parameters and witness
+/-! ## The oscillation witness
 
-Only the parameters enter the program. The two recurrence properties are used solely to prove that
-the constructed martingale succeeds at `z`, so the classical selection of the two grids introduces
-no dependence on an oracle. -/
-
-/-- The executable data of the oscillating construction. -/
-private structure OscillationParams where
-  /-- The grid whose cells the betting state uses. -/
-  betGrid : AffineDyadicGrid
-  /-- The grid whose cells the waiting state uses. -/
-  waitGrid : AffineDyadicGrid
-  /-- The lower threshold, as a coded nonnegative rational. -/
-  betaCode : ℕ
-  /-- The upper threshold. -/
-  gammaCode : ℕ
-  /-- The approximation precision of the slope test. -/
-  precision : ℕ
-  /-- The gap survives the approximation slack on both sides. Storing the robust form, rather than
-  `β < γ`, is what later gives the multiplicative gain without reopening the selection. -/
-  robustGap :
-    (((NNRatCode.value betaCode : ℚ≥0) : ℝ) + (2⁻¹ : ℝ) ^ precision)
-      < (((NNRatCode.value gammaCode : ℚ≥0) : ℝ) - (2⁻¹ : ℝ) ^ precision)
-
-namespace OscillationParams
-
-private noncomputable def beta (P : OscillationParams) : ℝ :=
-  ((NNRatCode.value P.betaCode : ℚ≥0) : ℝ)
-
-private noncomputable def gamma (P : OscillationParams) : ℝ :=
-  ((NNRatCode.value P.gammaCode : ℚ≥0) : ℝ)
-
-private noncomputable def margin (P : OscillationParams) : ℝ := (2⁻¹ : ℝ) ^ P.precision
-
-private theorem margin_pos (P : OscillationParams) : 0 < P.margin := by
-  rw [margin]
-  positivity
-
-private theorem beta_add_margin_lt (P : OscillationParams) :
-    P.beta + P.margin < P.gamma - P.margin := P.robustGap
-
-private theorem one_lt_ratio (P : OscillationParams) (hβ : 0 ≤ P.beta) :
-    1 < (P.gamma - P.margin) / (P.beta + P.margin) := by
-  have hpos : 0 < P.beta + P.margin := by linarith [P.margin_pos]
-  rw [lt_div_iff₀ hpos]
-  linarith [P.beta_add_margin_lt]
-
-end OscillationParams
+The two recurrence properties are used solely to prove that the constructed martingale succeeds at
+`z`, so the classical selection of the two grids introduces no dependence on an oracle. -/
 
 /-- The analytic content: the two selected grids each carry cells of arbitrarily small width whose
 slopes clear the thresholds by the margin. -/
