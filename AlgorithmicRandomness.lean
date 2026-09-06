@@ -45,6 +45,7 @@ import AlgorithmicRandomness.Analysis.SavingsCDF
 import AlgorithmicRandomness.Analysis.AffineSlope
 import AlgorithmicRandomness.Analysis.InfiniteUpperDerivative
 import AlgorithmicRandomness.Analysis.OscillationParams
+import AlgorithmicRandomness.Analysis.OscillationTree
 import AlgorithmicRandomness.Analysis.MonotoneOscillation
 import AlgorithmicRandomness.Complexity.PrefixMachine
 import AlgorithmicRandomness.Complexity.Universal
