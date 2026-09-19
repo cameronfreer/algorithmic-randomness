@@ -5,6 +5,7 @@ Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.InfiniteUpperDerivative
 import AlgorithmicRandomness.Analysis.OscillationParams
+import AlgorithmicRandomness.Analysis.OscillationSuccess
 import Mathlib.Data.Fintype.Pigeonhole
 
 /-!
@@ -410,8 +411,9 @@ private theorem exists_robustPrecision {A beta gamma B : ℝ} (h1 : A < beta) (h
 
 /-! ## The oscillation witness
 
-The two recurrence properties are used solely to prove that the constructed martingale succeeds at
-`z`, so the classical selection of the two grids introduces no dependence on an oracle. -/
+The two recurrence properties are used solely to prove that the constructed function has an
+infinite upper derivative at `z`, so the classical selection of the two grids introduces no
+dependence on an oracle. -/
 
 /-- The analytic content: the two selected grids each carry cells of arbitrarily small width whose
 slopes clear the thresholds by the margin. -/
@@ -593,6 +595,30 @@ private theorem nonempty_oscillationWitness {z : ℝ} (hz : z ∈ Set.Ioo (0 : �
     · exact pow_le_pow_of_le_one (by norm_num) (by norm_num) (Nat.le_of_lt hnN)
     · rw [hbc]
       exact hσs
+
+/-! ## Gate 5 -/
+
+/-- The witness yields the recurrence properties of its parameters. -/
+private theorem recurrent_of_witness {z : ℝ} (W : OscillationWitness f.addIdentity z) :
+    Recurrent f W.toOscillationParams z where
+  high ε hε := by
+    obtain ⟨σ, h1, h2, h3⟩ := W.arbitrarily_small_high ε hε
+    exact ⟨σ, h1, h2, h3⟩
+  low ε hε := by
+    obtain ⟨σ, h1, h2, h3⟩ := W.arbitrarily_small_low ε hε
+    exact ⟨σ, h1, h2, h3⟩
+
+/-- **Gate 5** (Brattka–Miller–Nies). At a computably random real, every computable nondecreasing
+function is differentiable. -/
+theorem _root_.AlgorithmicRandomness.IsComputablyRandomReal.differentiableAt {z : ℝ}
+    (hz : IsComputablyRandomReal z) : DifferentiableAt ℝ f.toFun z := by
+  by_contra hnot
+  have hz01 := hz.mem_unit
+  have hz0 : 0 < z := lt_of_le_of_ne hz01.1 fun h ↦ hz.ne_rat 0 (by rw [← h]; norm_num)
+  have hz1 : z < 1 := lt_of_le_of_ne hz01.2 fun h ↦ hz.ne_rat 1 (by rw [h]; norm_num)
+  obtain ⟨W⟩ := nonempty_oscillationWitness f ⟨hz0, hz1⟩ (hz.finiteUpperDerivativeAt f) hnot
+  exact not_finiteUpperDerivativeAt_oscMonotone f W.toOscillationParams hz01 hz.ne_rat
+    (recurrent_of_witness f W) (hz.finiteUpperDerivativeAt _)
 
 end ComputableMonotone
 
