@@ -609,7 +609,8 @@ private theorem recurrent_of_witness {z : ℝ} (W : OscillationWitness f.addIden
     exact ⟨σ, h1, h2, h3⟩
 
 /-- **Gate 5** (Brattka–Miller–Nies). At a computably random real, every computable nondecreasing
-function is differentiable. -/
+function is differentiable. The characterizations built on it are in
+`DifferentiabilityCharacterization`. -/
 theorem _root_.AlgorithmicRandomness.IsComputablyRandomReal.differentiableAt {z : ℝ}
     (hz : IsComputablyRandomReal z) : DifferentiableAt ℝ f.toFun z := by
   by_contra hnot

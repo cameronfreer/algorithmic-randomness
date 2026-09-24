@@ -50,6 +50,7 @@ import AlgorithmicRandomness.Analysis.OscillationInvariant
 import AlgorithmicRandomness.Analysis.OscillationFunction
 import AlgorithmicRandomness.Analysis.OscillationSuccess
 import AlgorithmicRandomness.Analysis.MonotoneOscillation
+import AlgorithmicRandomness.Analysis.DifferentiabilityCharacterization
 import AlgorithmicRandomness.Complexity.PrefixMachine
 import AlgorithmicRandomness.Complexity.Universal
 import AlgorithmicRandomness.Complexity.PrefixComplexity

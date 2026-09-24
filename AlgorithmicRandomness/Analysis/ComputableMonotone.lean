@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness.Analysis.Lipschitz
+import Mathlib.Analysis.Calculus.Deriv.Abs
 import Mathlib.LinearAlgebra.AffineSpace.Slope
 
 /-!
@@ -427,6 +428,126 @@ noncomputable def toComputableMonotone : ComputableMonotone where
 @[simp] theorem toComputableMonotone_unitFun (x : Set.Icc (0 : ℝ) 1) :
     f.toComputableMonotone.unitFun x = f.unitFun x + f.lipschitzBound * (x : ℝ) := rfl
 
+theorem toFun_toComputableMonotone {x : ℝ} (hx : x ∈ Set.Icc (0 : ℝ) 1) :
+    f.toComputableMonotone.toFun x = f.toFun x + f.lipschitzBound * x := by
+  rw [ComputableMonotone.toFun_of_mem _ hx, toComputableMonotone_unitFun, f.toFun_of_mem hx]
+
+/-- **The interior bridge.** Differentiability transfers across `toComputableMonotone`, since in
+the interior the two functions differ by a linear term. It is not an endpoint statement: at `0` and
+`1` the clamped extensions of the two functions break differently. -/
+theorem differentiableAt_toComputableMonotone_iff {z : ℝ} (hz : z ∈ Set.Ioo (0 : ℝ) 1) :
+    DifferentiableAt ℝ f.toComputableMonotone.toFun z ↔ DifferentiableAt ℝ f.toFun z := by
+  have hev : f.toComputableMonotone.toFun =ᶠ[nhds z]
+      fun x ↦ f.toFun x + f.lipschitzBound * x := by
+    refine Filter.eventuallyEq_of_mem (Ioo_mem_nhds hz.1 hz.2) fun x hx ↦ ?_
+    exact f.toFun_toComputableMonotone (Set.Ioo_subset_Icc_self hx)
+  have hlin : DifferentiableAt ℝ (fun x : ℝ ↦ (f.lipschitzBound : ℝ) * x) z :=
+    (differentiable_id.const_mul _).differentiableAt
+  rw [hev.differentiableAt_iff]
+  constructor
+  · intro h
+    have h' : DifferentiableAt ℝ
+        (fun x ↦ f.toFun x + f.lipschitzBound * x - f.lipschitzBound * x) z := h.sub hlin
+    simpa using h'
+  · intro h
+    exact h.add hlin
+
 end ComputableLipschitz
+
+/-! ## The clamped identity
+
+The witness at the two endpoints: its extension `max 0 (min 1 x)` has a corner at each. Its
+program is exact — the clamped argument itself — so the precision is ignored. -/
+
+namespace ComputableMonotone
+
+/-- The program of the clamped identity. -/
+def clampIdFun (w : ℕ) : ℕ := RatCode.ofNNRat (RatCode.clampUnit w.unpair.1)
+
+theorem computable_clampIdFun : Computable clampIdFun :=
+  (RatCode.primrec_ofNNRat.comp
+    (RatCode.primrec_clampUnit.comp (Primrec.fst.comp Primrec.unpair))).to_comp
+
+/-- The identity of `[0, 1]`, extended by clamping. -/
+noncomputable def clampId : ComputableMonotone where
+  unitFun x := x
+  monotone_unitFun _ _ h := h
+  continuous_unitFun := continuous_subtype_val
+  approxCode := NatFunctionCode.ofComputable computable_clampIdFun
+  approx_spec q k := by
+    rw [NatFunctionCode.apply₂, NatFunctionCode.ofComputable_toFun, clampIdFun, Nat.unpair_pair,
+      RatCode.value_ofNNRat, unitExtend_value_eq, sub_self, abs_zero]
+    positivity
+
+theorem clampId_toFun (x : ℝ) : clampId.toFun x = max 0 (min 1 x) := by
+  rw [toFun, unitExtend, Set.IccExtend, Function.comp_apply]
+  exact Set.coe_projIcc 0 1 zero_le_one x
+
+theorem clampId_toFun_of_mem {x : ℝ} (hx : x ∈ Set.Icc (0 : ℝ) 1) : clampId.toFun x = x := by
+  rw [clampId_toFun, min_eq_right hx.2, max_eq_right hx.1]
+
+theorem not_differentiableAt_clampId_zero : ¬DifferentiableAt ℝ clampId.toFun 0 := by
+  intro h
+  have hev : clampId.toFun =ᶠ[nhds 0] fun x ↦ (x + |x|) / 2 := by
+    filter_upwards [Iio_mem_nhds (zero_lt_one : (0 : ℝ) < 1)] with x hx
+    rw [clampId_toFun, min_eq_right (le_of_lt hx)]
+    rcases le_total 0 x with h0 | h0
+    · rw [max_eq_right h0, abs_of_nonneg h0]; ring
+    · rw [max_eq_left h0, abs_of_nonpos h0]; ring
+  have habs : DifferentiableAt ℝ (fun x : ℝ ↦ 2 * ((x + |x|) / 2) - x) 0 :=
+    ((hev.differentiableAt_iff.mp h).const_mul 2).sub differentiableAt_id
+  refine not_differentiableAt_abs_zero ?_
+  convert habs using 1
+  funext x
+  ring
+
+theorem not_differentiableAt_clampId_one : ¬DifferentiableAt ℝ clampId.toFun 1 := by
+  intro h
+  have hev : clampId.toFun =ᶠ[nhds 1] fun x ↦ (1 + x - |x - 1|) / 2 := by
+    filter_upwards [Ioi_mem_nhds (zero_lt_one : (0 : ℝ) < 1)] with x hx
+    rw [clampId_toFun, max_eq_right (le_min zero_le_one (le_of_lt hx))]
+    rcases le_total x 1 with h1 | h1
+    · rw [min_eq_right h1, abs_of_nonpos (by linarith)]; ring
+    · rw [min_eq_left h1, abs_of_nonneg (by linarith)]; ring
+  -- `|x - 1| = 1 + x - 2 F x` near `1`; translating by `1` puts the corner at `0`
+  have hshift : DifferentiableAt ℝ (fun x : ℝ ↦ 1 + x - 2 * ((1 + x - |x - 1|) / 2)) 1 :=
+    ((differentiableAt_const _).add differentiableAt_id).sub
+      ((hev.differentiableAt_iff.mp h).const_mul 2)
+  have habs : DifferentiableAt ℝ (fun x : ℝ ↦ |x - 1|) 1 := by
+    convert hshift using 1
+    funext x
+    ring
+  refine not_differentiableAt_abs_zero ?_
+  have := (differentiableAt_comp_add_const (a := (0 : ℝ)) (b := 1)).mpr (by simpa using habs)
+  simpa using this
+
+end ComputableMonotone
+
+/-! ## Off the unit interval
+
+Outside `[0, 1]` the canonical extension is locally constant, whatever the data: no continuity,
+monotonicity, or Lipschitz hypothesis is involved. So every bundled function is differentiable
+there, and the unit-interval hypothesis of the characterizations cannot be dropped. -/
+
+theorem unitExtend_eventuallyEq_of_notMem (u : Set.Icc (0 : ℝ) 1 → ℝ) {z : ℝ}
+    (hz : z ∉ Set.Icc (0 : ℝ) 1) : unitExtend u =ᶠ[nhds z] fun _ ↦ unitExtend u z := by
+  rw [Set.mem_Icc, not_and_or, not_le, not_le] at hz
+  rcases hz with hz | hz
+  · filter_upwards [Iio_mem_nhds hz] with x hx
+    rw [unitExtend, Set.IccExtend_of_le_left _ _ hx.le, Set.IccExtend_of_le_left _ _ hz.le]
+  · filter_upwards [Ioi_mem_nhds hz] with x hx
+    rw [unitExtend, Set.IccExtend_of_right_le _ _ hx.le, Set.IccExtend_of_right_le _ _ hz.le]
+
+theorem differentiableAt_unitExtend_of_notMem (u : Set.Icc (0 : ℝ) 1 → ℝ) {z : ℝ}
+    (hz : z ∉ Set.Icc (0 : ℝ) 1) : DifferentiableAt ℝ (unitExtend u) z :=
+  (differentiableAt_const _).congr_of_eventuallyEq (unitExtend_eventuallyEq_of_notMem u hz)
+
+theorem ComputableMonotone.differentiableAt_toFun_of_notMem (g : ComputableMonotone) {z : ℝ}
+    (hz : z ∉ Set.Icc (0 : ℝ) 1) : DifferentiableAt ℝ g.toFun z :=
+  differentiableAt_unitExtend_of_notMem g.unitFun hz
+
+theorem ComputableLipschitz.differentiableAt_toFun_of_notMem (f : ComputableLipschitz) {z : ℝ}
+    (hz : z ∉ Set.Icc (0 : ℝ) 1) : DifferentiableAt ℝ f.toFun z :=
+  differentiableAt_unitExtend_of_notMem f.unitFun hz
 
 end AlgorithmicRandomness

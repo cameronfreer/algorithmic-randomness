@@ -57,24 +57,49 @@ Both directions are proved. See
 [docs/prefix-free-machines.md](docs/prefix-free-machines.md) for how the two constructions behind
 them fit together.
 
-### A nondifferentiability witness for computable Lipschitz functions
+### Computable randomness and differentiability
 
-The library's main application is one direction of the characterization of computable randomness
-by differentiability (Freer–Kjos-Hanssen–Nies–Stephan,
-[arXiv:1402.2429](https://arxiv.org/abs/1402.2429), Theorem 4.2):
+Computable randomness of a real in the unit interval is characterized by differentiability, in
+two presentations of computable functions:
 
-> if `z ∈ [0, 1]` is not computably random, then some computable Lipschitz function fails to be
-> differentiable at `z`,
+```lean
+theorem isComputablyRandomReal_iff_forall_computableMonotone (hz : z ∈ Set.Icc (0 : ℝ) 1) :
+    IsComputablyRandomReal z ↔ ∀ g : ComputableMonotone, DifferentiableAt ℝ g.toFun z
 
-in sequence form over Cantor space and in real-number form over `[0, 1]`. Here *computable
-Lipschitz function* means a function on the unit interval presented by exact rational values at
-the dyadic cut points together with a natural Lipschitz bound, extended canonically to `ℝ`.
+theorem isComputablyRandomReal_iff_forall_computableLipschitz (hz : z ∈ Set.Icc (0 : ℝ) 1) :
+    IsComputablyRandomReal z ↔ ∀ f : ComputableLipschitz, DifferentiableAt ℝ f.toFun z
+```
 
-The converse is **not** formalized. That direction — computable randomness of `z` implies every
-computable Lipschitz function is differentiable at `z` — rests on the Brattka–Miller–Nies
-characterization of computable randomness by differentiability of computable nondecreasing
-functions ([arXiv:1104.4465](https://arxiv.org/abs/1104.4465)), which this library does not
-develop. The full biconditional is therefore not established here.
+The first is the theorem of Brattka–Miller–Nies
+([arXiv:1104.4465](https://arxiv.org/abs/1104.4465)); the second is Freer–Kjos-Hanssen–Nies–Stephan
+([arXiv:1402.2429](https://arxiv.org/abs/1402.2429), Theorem 4.2). Each is a statement about a
+specific presentation and should be read against it:
+
+- a *computable nondecreasing function* (`ComputableMonotone`) is a continuous nondecreasing
+  function on `[0, 1]` together with a program approximating its value at any rational argument
+  to within `2⁻ᵏ`;
+- a *computable Lipschitz function* (`ComputableLipschitz`) is a function on `[0, 1]` with a
+  natural Lipschitz bound, together with a program computing its exact rational values at the
+  dyadic cut points.
+
+Both are extended to `ℝ` by clamping. The unit-interval hypothesis cannot be dropped: outside
+`[0, 1]` every such extension is locally constant, so universal differentiability holds there,
+while no real outside `[0, 1]` is computably random.
+
+The substantial direction is that at a computably random real every computable nondecreasing
+function is differentiable. It follows BMN. Chord slopes over the cells of a rationally scaled and
+shifted dyadic grid form a computable martingale, so at a computably random real every computable
+nondecreasing function has bounded chord slopes nearby. If differentiability failed, two
+separated chord slopes would recur at arbitrarily small scales. A finite family of such grids
+captures them, and an interpolation construction turns them into a second computable
+nondecreasing function whose chord slopes near the point are unbounded, which is a contradiction.
+
+The Lipschitz characterization then needs no further construction. Adding `K · x` turns a
+computable Lipschitz function into a computable nondecreasing one without affecting
+differentiability in the interior. Conversely, a computable martingale succeeding on an expansion
+of a non-random `z` yields a computable Lipschitz function whose chord slopes across the prefix
+intervals of `z` are exactly the capital of a bounded oscillating martingale, so it is not
+differentiable at `z`. That direction also holds in sequence form over Cantor space.
 
 ## Verification
 
@@ -105,8 +130,10 @@ layer is exercised rather than merely typechecked.
   hitting exactly `3` and exactly `2` arbitrarily late along any path where the source succeeds.
 - The cumulative function of a tree martingale, built directly at dyadic endpoints, whose chord
   slope across a cylinder is *exactly* the capital there.
-- Computable Lipschitz functions with exact rational values at dyadic points, and the
-  nondifferentiability theorem above.
+- Computable Lipschitz functions with exact rational values at dyadic points, and computable
+  nondecreasing functions with rational approximation programs.
+- Both characterizations of computable randomness by differentiability, including BMN's
+  finite family of affine dyadic grids and its oscillating construction.
 - Binary expansions of reals, with `realOf` surjective onto the unit interval.
 - Prefix-free machines as coded objects, an optimal universal machine built as one actual program,
   prefix complexity with primitive recursive finite approximations, and Kraft–Chaitin allocation.
@@ -139,7 +166,7 @@ The source is organized by mathematical layer:
 | `EffectiveOpen/` | Coded c.e. open families, reindexing, and trimming |
 | `Randomness/` | Martin-Löf, Schnorr, and Kurtz randomness, and the implications among them |
 | `Martingale/` | Tree martingales, Ville's inequality, computable and savings martingales |
-| `Analysis/` | Dyadic intervals, cumulative functions, computable Lipschitz functions |
+| `Analysis/` | Dyadic intervals, cumulative functions, computable Lipschitz and nondecreasing functions, differentiability |
 | `Complexity/` | Prefix-free machines, the universal machine, Kraft–Chaitin allocation |
 | `EffectiveClosed/` | Computable trees, level fronts, and the tests their null path classes carry |
 

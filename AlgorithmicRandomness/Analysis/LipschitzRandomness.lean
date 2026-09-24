@@ -34,11 +34,11 @@ in both sequence form (`exists_computableLipschitz_not_differentiableAt`) and re
 (`exists_computableLipschitz_not_differentiableAt_of_not_randomReal`). The second rests on
 `exists_realOf_eq`: every point of `[0, 1]` has a binary expansion, proved by greedy bisection.
 
-The published theorem is a biconditional, and the forward direction is not here and is not close.
-It reduces a computable Lipschitz `f` to the nondecreasing `g x = f x + c * x` and then invokes
-the Brattka–Miller–Nies characterization of computable randomness by differentiability of
-computable nondecreasing functions (arXiv:1104.4465). That is a substantial effective-analysis
-development, not a wrapper.
+The published theorem is a biconditional. Its forward direction reduces a computable Lipschitz
+`f` to the nondecreasing `f x + K * x` and invokes the Brattka–Miller–Nies theorem that computable
+nondecreasing functions are differentiable at computably random reals (arXiv:1104.4465). That is
+a separate development (`MonotoneOscillation`), and the two directions are assembled into the
+biconditional in `DifferentiabilityCharacterization`.
 
 Finally, "computable Lipschitz function" here means `ComputableLipschitz`: exact rational values
 at the dyadic cut points plus a natural Lipschitz bound. That is a choice of presentation, and
