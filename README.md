@@ -109,9 +109,12 @@ CI enforces all of the following on every push:
   under the same linter set;
 - the public spine contains no `sorry`, and never imports the experimental library, checked
   against comment- and string-stripped sources so neither can hide in a comment;
-- every declaration in the public import spine depends only on the standard axioms `propext`,
-  `Classical.choice`, and `Quot.sound`, checked by an environment sweep rather than a curated
-  list.
+- every kernel declaration defined in a spine module — public, private, or generated, in any
+  namespace — depends only on the standard axioms `propext`, `Classical.choice`, and
+  `Quot.sound`. Declarations are selected by defining module rather than by name or from a
+  curated list, over the same module closure as the sorry check, and the two closures are
+  cross-checked. Regression fixtures show the audit rejecting a forbidden axiom in each place a
+  name-based filter would miss. It audits kernel declarations, not compiler-only IR helpers.
 
 Key executable definitions additionally carry compile-time evaluation checks, so the executable
 layer is exercised rather than merely typechecked.

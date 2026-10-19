@@ -15,9 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Builds both default targets: the `AlgorithmicRandomness` root spine (strict —
-      # `warningAsError` is on) and the `AlgorithmicRandomnessExperimental` staging library
-      # (sorries permitted, but it must still typecheck).
+      # Builds the three default targets: the `AlgorithmicRandomness` root spine (strict —
+      # `warningAsError` is on), the `AlgorithmicRandomnessExperimental` staging library
+      # (sorries permitted, but it must still typecheck), and the `AxiomAudit` library with
+      # its fixtures (strict).
       - uses: leanprover/lean-action@v1
 
       # The sorry boundary: the root spine is sorry-free and never imports anything from
@@ -25,8 +26,16 @@ jobs:
       - name: Verify the sorry boundary
         run: python3 scripts/check_sorry_boundary.py
 
-      # Axiom hygiene: an environment sweep over every declaration owned by the
-      # `AlgorithmicRandomness` namespace, so a new declaration cannot introduce an axiom by
-      # being left off a hand-curated list.
+      # Axiom hygiene: every kernel declaration defined in a spine module, selected by module
+      # rather than by name, so private, generated, and root-namespace declarations are covered.
+      # Runs after the build, which the audit's closure cross-check assumes.
       - name: Verify axiom hygiene
         run: lake env lean scripts/AxiomAudit.lean
+
+      # The audit's own negative cases: fixtures with a deliberately forbidden axiom, built by
+      # the `AxiomAudit` default target. The unknown-provenance case declares a local constant,
+      # so it runs as a separate driver.
+      - name: Verify the axiom audit rejects what it should
+        run: |
+          lake env lean scripts/AxiomAuditRegression.lean
+          lake env lean scripts/AxiomAuditUnknown.lean

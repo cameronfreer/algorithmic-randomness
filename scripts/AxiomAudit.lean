@@ -4,34 +4,20 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Cameron Freer
 -/
 import AlgorithmicRandomness
-import Lean
+import AxiomAudit.Core
 
 /-!
 # Axiom audit
 
-Every declaration owned by the `AlgorithmicRandomness` namespace must depend only on the
-standard axioms `propext`, `Classical.choice`, and `Quot.sound`. This sweeps the environment
-rather than a hand-curated list, so a new declaration cannot silently introduce an axiom by
-being forgotten.
+Every kernel declaration defined in a module of the root import spine — public, private, or
+generated, in any namespace — must depend only on the standard axioms `propext`,
+`Classical.choice`, and `Quot.sound`. Declarations are selected by their defining module, not by
+name, over the same module closure `scripts/check_sorry_boundary.py` checks for sorries; the two
+closures are cross-checked. See `AxiomAudit.Core` for the rules.
 
-Run with `lake env lean scripts/AxiomAudit.lean`; it exits nonzero on any violation.
+Run from the repo root, after a build, with `lake env lean scripts/AxiomAudit.lean`; it exits
+nonzero on any violation. This file declares nothing: a local constant would have no defining
+module and would fail the audit.
 -/
 
-open Lean Elab Command
-
-run_cmd do
-  let env ← getEnv
-  let allowed : List Name := [``propext, ``Classical.choice, ``Quot.sound]
-  let mut offenders : Array (Name × Name) := #[]
-  let mut checked : Nat := 0
-  for (n, _) in env.constants.toList do
-    if (`AlgorithmicRandomness).isPrefixOf n && !n.isInternal then
-      checked := checked + 1
-      let axs ← liftCoreM <| collectAxioms n
-      for a in axs do
-        unless allowed.contains a do
-          offenders := offenders.push (n, a)
-  if offenders.isEmpty then
-    logInfo s!"axiom audit: {checked} declaration(s) use only propext, Classical.choice, Quot.sound"
-  else
-    throwError "axiom audit failed: {offenders}"
+run_cmd Lean.Elab.Command.liftCoreM <| AxiomAudit.run `AlgorithmicRandomness

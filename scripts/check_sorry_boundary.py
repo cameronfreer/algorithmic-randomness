@@ -21,10 +21,16 @@ stale `.lake`.
 
 Usage: scripts/check_sorry_boundary.py   (from anywhere inside the repo)
 Exit status 1 on any violation.
+
+`--print-closure [--root MODULE]` instead prints the repo-local import closure of MODULE (default:
+the root spine), one module name per line in sorted order, and checks nothing. Diagnostics go to
+stderr, and a root with no source file exits with status 2. The axiom audit consumes this output
+to cross-check its own closure, computed from compiled headers.
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -132,10 +138,10 @@ def imports_of(path: Path) -> list[str]:
     return out
 
 
-def closure(root: Path) -> set[str]:
-    """Transitive repo-local import closure of the root module."""
+def closure(root: Path, start: str = ROOT_MODULE) -> set[str]:
+    """Transitive repo-local import closure of a module, by default the root spine."""
     seen: set[str] = set()
-    stack = [ROOT_MODULE]
+    stack = [start]
     while stack:
         mod = stack.pop()
         if mod in seen:
@@ -156,8 +162,27 @@ def sorries_in(path: Path) -> list[tuple[int, str]]:
     return hits
 
 
+def print_closure(root: Path, start: str) -> int:
+    if module_path(root, start) is None:
+        print(f"check_sorry_boundary: no source file for module {start}", file=sys.stderr)
+        return 2
+    for mod in sorted(closure(root, start)):
+        print(mod)
+    return 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Enforce the sorry boundary.")
+    parser.add_argument("--print-closure", action="store_true",
+                        help="print the import closure of --root and check nothing")
+    parser.add_argument("--root", default=ROOT_MODULE,
+                        help="module whose closure --print-closure prints")
+    args = parser.parse_args()
     root = repo_root()
+    if args.print_closure:
+        return print_closure(root, args.root)
+    if args.root != ROOT_MODULE:
+        parser.error("--root is only meaningful with --print-closure")
     spine = closure(root)
     status = 0
 

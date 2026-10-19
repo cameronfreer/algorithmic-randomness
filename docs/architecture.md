@@ -265,8 +265,11 @@ These are enforced policies rather than periodic observations. CI builds the pub
 warnings as errors and requires the experimental library to typecheck under the same linter
 set, rejects proof placeholders in the public spine, enforces the experimental dependency
 boundary — scanning comment- and string-stripped sources, with nested block comments handled, so
-that neither a `sorry` nor an import can hide inside a comment — and audits the axiom policy by sweeping every declaration in the public import spine
-— a sweep rather than a curated list, so a new declaration cannot introduce an axiom by being
-forgotten. Key executable
-definitions carry compile-time evaluation checks, so the executable layer is exercised and not
-merely typechecked.
+that neither a `sorry` nor an import can hide inside a comment — and audits the axiom policy
+over every kernel declaration defined in a spine module. The axiom audit selects declarations by
+defining module, not by name, so private, generated, and root-namespace declarations are covered
+like any other, and a new declaration cannot introduce an axiom by being forgotten. Its module
+closure is computed from compiled headers and cross-checked against the source closure the sorry
+check uses. Fixtures with a deliberately forbidden axiom keep the audit's negative cases under
+test. Key executable definitions carry compile-time evaluation checks, so the executable layer is
+exercised and not merely typechecked.

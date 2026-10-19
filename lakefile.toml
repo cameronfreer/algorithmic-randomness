@@ -2,7 +2,7 @@ name = "algorithmic-randomness"
 version = "0.1.0"
 license = "Apache-2.0"
 keywords = ["math"]
-defaultTargets = ["AlgorithmicRandomness", "AlgorithmicRandomnessExperimental"]
+defaultTargets = ["AlgorithmicRandomness", "AlgorithmicRandomnessExperimental", "AxiomAudit"]
 
 # Pinned to the mathlib revision at the v4.32.2 tag, matching the toolchain in
 # `lean-toolchain` so everything builds against exactly one mathlib.
@@ -25,3 +25,13 @@ leanOptions = { autoImplicit = false, weak.linter.mathlibStandardSet = true, wea
 [[lean_lib]]
 name = "AlgorithmicRandomnessExperimental"
 leanOptions = { autoImplicit = false, weak.linter.mathlibStandardSet = true, weak.linter.style.longFile = 1500, weak.linter.style.longFileDefValue = 1500, warningAsError = false }
+
+# The axiom audit (`AxiomAudit.Core`) and its regression fixtures. Independent of the spine: the
+# production driver `scripts/AxiomAudit.lean` imports the spine and `AxiomAudit.Core` only. The
+# fixtures declare a deliberately forbidden axiom and exist only for the negative tests in
+# `scripts/AxiomAuditRegression.lean`. The glob builds every module under `AxiomAudit/`, which the
+# default (root modules only) would not.
+[[lean_lib]]
+name = "AxiomAudit"
+globs = ["AxiomAudit.+"]
+leanOptions = { autoImplicit = false, weak.linter.mathlibStandardSet = true, weak.linter.style.longFile = 1500, weak.linter.style.longFileDefValue = 1500, warningAsError = true }
